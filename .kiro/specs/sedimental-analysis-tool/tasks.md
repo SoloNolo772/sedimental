@@ -7,7 +7,7 @@ This implementation follows a Docker-first architecture where all processing run
 ## Tasks
 
 - [ ] 1. Phase 1: Docker Foundation
-  - [ ] 1.1 Create base Dockerfile with multi-stage build
+  - [x] 1.1 Create base Dockerfile with multi-stage build
     - Set up python:3.10-slim base image
     - Install OpenJDK 11 for PyImageJ
     - Install Maven dependencies
@@ -16,19 +16,19 @@ This implementation follows a Docker-first architecture where all processing run
     - Install ImageGrains package
     - _Requirements: 8.1, 8.2, 8.6_
 
-  - [ ] 1.2 Create Docker Compose configuration for development
+  - [x] 1.2 Create Docker Compose configuration for development
     - Define sedimental service with volume mounts
     - Configure /data/input, /data/output, /data/temp directories
     - Set up environment variables for configuration
     - _Requirements: 8.4, 8.5_
 
-  - [ ] 1.3 Create entrypoint script and health check
+  - [x] 1.3 Create entrypoint script and health check
     - Implement container startup script
     - Add health check endpoint for readiness
     - Verify ImageGrains and PyImageJ initialization
     - _Requirements: 8.7_
 
-  - [ ] 1.4 Checkpoint - Verify Docker build and startup
+  - [x] 1.4 Checkpoint - Verify Docker build and startup
     - Ensure Docker image builds successfully
     - Verify container starts and passes health check within 60 seconds
     - Ask the user if questions arise

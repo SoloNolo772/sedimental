@@ -1,0 +1,41 @@
+# =============================================================================
+# Sedimental Analysis Tool - Python Dependencies
+# =============================================================================
+
+# Core image processing
+Pillow>=10.0.0
+numpy>=1.24.0
+scikit-image>=0.21.0
+tifffile>=2023.7.0
+
+# ImageGrains for grain segmentation
+# Source: https://github.com/dmair1989/imagegrains
+imagegrains>=0.2.0
+
+# PyImageJ for particle analysis (requires Java 11)
+# Source: https://github.com/imagej/pyimagej
+pyimagej>=1.4.0
+scyjava>=1.9.0
+jpype1>=1.4.0
+
+# Napari core (headless mode for ImageGrains compatibility)
+napari>=0.4.18
+napari-console>=0.0.8
+
+# Web interface
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+
+# Database for job tracking
+aiosqlite>=0.19.0
+
+# CLI utilities
+click>=8.1.0
+
+# Testing dependencies (included for development builds)
+pytest>=7.4.0
+hypothesis>=6.82.0
+
+# Logging and utilities
+structlog>=23.1.0

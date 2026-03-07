@@ -1,0 +1,55 @@
+# Git
+.git
+.gitignore
+
+# Kiro specs and steering
+.kiro
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info
+.eggs
+dist
+build
+
+# Virtual environments
+venv
+.venv
+env
+.env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov
+.tox
+.nox
+
+# Documentation
+docs/_build
+*.md
+!README.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.log
+*.tmp
+temp/
+tmp/
+
+# Test data (will be mounted as volumes)
+test_data/
+sample_images/

@@ -1,0 +1,80 @@
+# =============================================================================
+# Sedimental Analysis Tool - Docker Compose Configuration
+# =============================================================================
+# Development configuration with volume mounts for local development
+# =============================================================================
+
+services:
+  sedimental:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: sedimental:latest
+    container_name: sedimental-dev
+    
+    # Volume mounts for development
+    volumes:
+      # Input directory - mount local images for processing (read-only)
+      - ./data/input:/data/input:ro
+      # Output directory - results and masks written here
+      - ./data/output:/data/output
+      # Temp directory - intermediate processing files
+      - ./data/temp:/data/temp
+      # Jobs directory - web interface job storage (SQLite + job files)
+      - ./data/jobs:/data/jobs
+      # Mount source code for development (optional - comment out for production)
+      - ./sedimental:/app/sedimental:ro
+    
+    # Environment variables for configuration
+    environment:
+      # Logging configuration
+      - SEDIMENTAL_LOG_LEVEL=INFO
+      - SEDIMENTAL_LOG_FILE=/data/output/sedimental.log
+      
+      # Processing configuration
+      - SEDIMENTAL_MAX_WORKERS=4
+      - SEDIMENTAL_PARALLEL=false
+      
+      # Web server configuration
+      - SEDIMENTAL_WEB_HOST=0.0.0.0
+      - SEDIMENTAL_WEB_PORT=8080
+      
+      # PyImageJ/ImageJ2 configuration
+      - JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+      - PYIMAGEJ_HEADLESS=1
+      
+      # Napari headless mode
+      - NAPARI_HEADLESS=1
+      - QT_QPA_PLATFORM=offscreen
+      - DISPLAY=:0
+    
+    # Port mapping for web interface
+    ports:
+      - "8080:8080"
+    
+    # Health check configuration - uses HTTP endpoint
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    
+    # Restart policy for development
+    restart: unless-stopped
+    
+    # Resource limits (adjust based on available resources)
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+
+# Named volumes (alternative to bind mounts for production)
+# Uncomment these and update service volumes for production deployment
+# volumes:
+#   sedimental-input:
+#   sedimental-output:
+#   sedimental-temp:
+#   sedimental-jobs:
