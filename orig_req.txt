@@ -1,0 +1,9 @@
+The project will be a sediment analysis tool called Sedimental for geologists to convert raw images of sediment samples taken from rivers into measurements such as size, circularity and roundness. The raw images taken from the camera are in JPEG format.  The current process requires geologists to use two user interfaces to completely process their original data.
+* Napari (https://github.com/napari/napari) is good at identifying shapes from the JPEGs and saving the information into TIFF format with the detected edges. Specifically, the ImageGrains plugin (https://github.com/dmair1989/imagegrains) is the algorithm which gives the best result.
+* We then use ImageJ (https://github.com/imagej/ImageJ) and/or its successor ImageJ2 (https://github.com/imagej/imagej2) in order to measure the statistics we are interested in and output those in a CSV format.
+
+What we would like to do is create a tool that uses the libraries of both ImageGrains and ImageJ to perform this processing without having to install and use both of these user interfaces.  The tool should be runnable as a CLI script. We would also like to be able to host a Dockerized version of the tool with a simple user interface that would allow scientists to upload images to a server, perform the calculations, and download the results. In addition to processing the raw data, we would like the CSV output to also contain some metadata such as the image filename, sample ID, the location and date of the image capture and potentially more.
+
+There is a Python port of the core ImageJ logic at (https://py.imagej.net/en/latest/api.html) which may make it easier to address dependencies and interoperability.
+
+Please research the repositories provided and design an integration that would satisfy our requirements.
