@@ -83,6 +83,7 @@ WORKDIR /app
 
 # Copy application code
 COPY sedimental/ /app/sedimental/
+COPY tests/ /app/tests/
 COPY entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 

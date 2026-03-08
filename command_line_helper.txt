@@ -1,0 +1,45 @@
+# To update conatainer before running any tests
+docker compose build
+
+# To run a specific test, change the file for specific use case
+docker-compose run --rm sedimental test tests/test_metadata_merge.py -v
+
+# CLI Commands
+
+# Git
+# To see what has changed in your project folder:
+  git status
+
+# To add those changes to the commit:
+  git add -A
+  
+# To submit the commit:
+  git commit -m "Commit message"
+
+# To push to the github website:
+  git push origin main
+
+# To update your local project from github:
+  git pull origin main
+
+# Docker
+# First build an image from the Dockerfile:
+docker build -t sedimental:latest .
+
+# Update the image with changes:
+docker compose build
+
+# Update both the image and the running container with changes:
+docker compose up -d --build
+
+# Run a container from image:
+docker-compose up -d
+
+# Check the container is running:
+docker-compose ps
+
+# Update from project folder:
+
+# If the entrypoint.sh script is failing, go to git bash:
+file entrypoint.sh
+sed -i 's/\r$//' entrypoint.sh

@@ -225,6 +225,12 @@ case "${1:-}" in
         verify_pyimagej
         exec python -m sedimental.cli process "$@"
         ;;
+    test)
+        shift
+        echo "[START] Running test suite..."
+        # Run pytest with all arguments passed through
+        exec python -m pytest "$@"
+        ;;
     shell)
         echo "[START] Starting interactive shell..."
         exec /bin/bash
