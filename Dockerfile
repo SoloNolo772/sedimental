@@ -85,6 +85,7 @@ WORKDIR /app
 COPY sedimental/ /app/sedimental/
 COPY tests/ /app/tests/
 COPY entrypoint.sh /app/entrypoint.sh
+COPY segment_image.py /app/segment_image.py
 RUN chmod +x /app/entrypoint.sh
 
 # Pre-initialize PyImageJ to download ImageJ2 components during build

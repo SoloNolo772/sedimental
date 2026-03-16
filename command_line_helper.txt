@@ -43,3 +43,5 @@ docker-compose ps
 # If the entrypoint.sh script is failing, go to git bash:
 file entrypoint.sh
 sed -i 's/\r$//' entrypoint.sh
+
+
