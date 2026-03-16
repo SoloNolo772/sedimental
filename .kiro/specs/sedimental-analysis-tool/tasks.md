@@ -88,7 +88,7 @@ This implementation follows a Docker-first architecture where all processing run
     - **Validates: Requirements 1.4**
 
 - [ ] 4. Phase 2: Core Processing Pipeline - SegmentationEngine
-  - [ ] 4.1 Implement SegmentationEngine class
+  - [x] 4.1 Implement SegmentationEngine class
     - Implement segment() method using ImageGrains algorithms
     - Return SegmentationResult with labeled mask and grain count
     - Assign unique integer labels to each grain (0 = background)
@@ -96,11 +96,11 @@ This implementation follows a Docker-first architecture where all processing run
     - Implement save_mask() for TIFF output
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5_
 
-  - [ ]* 4.2 Write property test for segmentation mask validity
+  - [x] 4.2 Write property test for segmentation mask validity
     - **Property 5: Segmentation Mask Validity**
     - **Validates: Requirements 2.1, 2.2, 2.3**
 
-  - [ ]* 4.3 Write property test for mask persistence on request
+  - [x] 4.3 Write property test for mask persistence on request
     - **Property 6: Mask Persistence on Request**
     - **Validates: Requirements 2.4**
 
