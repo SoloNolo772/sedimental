@@ -63,7 +63,7 @@ This implementation follows a Docker-first architecture where all processing run
     - _Requirements: 11.1, 11.5, 11.6_
 
 - [ ] 3. Phase 2: Core Processing Pipeline - ImageLoader
-  - [ ] 3.1 Implement ImageLoader class
+  - [x] 3.1 Implement ImageLoader class
     - Implement load() method for JPEG validation and loading
     - Implement discover_images() for directory scanning
     - Support .jpg and .jpeg extensions (case-insensitive)
@@ -71,19 +71,19 @@ This implementation follows a Docker-first architecture where all processing run
     - Skip non-JPEG files with warning log
     - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-  - [ ]* 3.2 Write property test for valid JPEG acceptance
+  - [x] 3.2 Write property test for valid JPEG acceptance
     - **Property 1: Valid JPEG Acceptance**
     - **Validates: Requirements 1.1**
 
-  - [ ]* 3.3 Write property test for directory JPEG discovery
+  - [x] 3.3 Write property test for directory JPEG discovery
     - **Property 2: Directory JPEG Discovery**
     - **Validates: Requirements 1.2, 9.1**
 
-  - [ ]* 3.4 Write property test for invalid file error identification
+  - [x] 3.4 Write property test for invalid file error identification
     - **Property 3: Invalid File Error Identification**
     - **Validates: Requirements 1.3**
 
-  - [ ]* 3.5 Write property test for non-JPEG file filtering
+  - [x] 3.5 Write property test for non-JPEG file filtering
     - **Property 4: Non-JPEG File Filtering**
     - **Validates: Requirements 1.4**
 
