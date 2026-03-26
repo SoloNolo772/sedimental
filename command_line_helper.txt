@@ -44,4 +44,7 @@ docker-compose ps
 file entrypoint.sh
 sed -i 's/\r$//' entrypoint.sh
 
+# Run test script to use segmentation engine and produce output on sample data
+docker compose build
+docker compose run --rm --entrypoint python sedimental segment_image.py ZVIEW_POPES_BEACH_EG.JPG
 

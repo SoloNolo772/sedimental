@@ -19,9 +19,15 @@ from .errors import (
     MetadataParseError,
     OutputError,
 )
+from .csv_writer import CSVWriter
 from .logging import configure_logging
+from .metadata import MetadataParser
+from .orchestrator import ProcessingOrchestrator
 
 __all__ = [
+    "CSVWriter",
+    "MetadataParser",
+    "ProcessingOrchestrator",
     "SedimentalError",
     "ImageError",
     "InvalidImageError",

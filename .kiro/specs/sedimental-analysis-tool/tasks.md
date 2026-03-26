@@ -105,7 +105,7 @@ This implementation follows a Docker-first architecture where all processing run
     - **Validates: Requirements 2.4**
 
 - [ ] 5. Phase 2: Core Processing Pipeline - MeasurementEngine
-  - [ ] 5.1 Implement MeasurementEngine class
+  - [x] 5.1 Implement MeasurementEngine class
     - Implement lazy PyImageJ initialization
     - Implement measure() method for particle statistics
     - Calculate area, perimeter, circularity, roundness
@@ -113,64 +113,64 @@ This implementation follows a Docker-first architecture where all processing run
     - Support scale_ppm for unit conversion
     - _Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8_
 
-  - [ ]* 5.2 Write property test for measurement count consistency
+  - [x] 5.2 Write property test for measurement count consistency
     - **Property 7: Measurement Count Consistency**
     - **Validates: Requirements 3.1**
 
-  - [ ]* 5.3 Write property test for measurement value invariants
+  - [x] 5.3 Write property test for measurement value invariants
     - **Property 8: Measurement Value Invariants**
     - **Validates: Requirements 3.2, 3.3, 3.4, 3.5, 3.6, 3.7**
 
-  - [ ]* 5.4 Write property test for scale conversion correctness
+  - [x] 5.4 Write property test for scale conversion correctness
     - **Property 9: Scale Conversion Correctness**
     - **Validates: Requirements 3.8, 10.1, 10.2**
 
 - [ ] 6. Phase 2: Core Processing Pipeline - MetadataParser
-  - [ ] 6.1 Implement MetadataParser class
+  - [x] 6.1 Implement MetadataParser class
     - Implement parse() method for JSON loading
     - Support "default" and "images" structure
     - Implement get_for_image() with merge logic
     - Raise MetadataParseError for malformed JSON
     - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.10, 5.11_
 
-  - [ ]* 6.2 Write property test for metadata auto-discovery
+  - [x] 6.2 Write property test for metadata auto-discovery
     - **Property 12: Metadata Auto-Discovery**
     - **Validates: Requirements 5.1**
 
-  - [ ]* 6.3 Write property test for metadata CLI override
+  - [x] 6.3 Write property test for metadata CLI override
     - **Property 13: Metadata CLI Override**
     - **Validates: Requirements 5.2**
 
-  - [ ]* 6.4 Write property test for metadata JSON round-trip
+  - [x] 6.4 Write property test for metadata JSON round-trip
     - **Property 15: Metadata JSON Round-Trip**
     - **Validates: Requirements 5.12**
 
-  - [ ]* 6.5 Write property test for malformed metadata error
+  - [x] 6.5 Write property test for malformed metadata error
     - **Property 16: Malformed Metadata Error**
     - **Validates: Requirements 5.11**
 
 - [ ] 7. Phase 2: Core Processing Pipeline - CSVWriter
-  - [ ] 7.1 Implement CSVWriter class
+  - [x] 7.1 Implement CSVWriter class
     - Implement write() method with all required columns
     - Include source_file, grain_id, measurements, units, scale_factor
     - Include metadata columns (sample_id, location, capture_date, submitted_by)
     - Implement parse() method for round-trip support
     - _Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7_
 
-  - [ ]* 7.2 Write property test for CSV round-trip
+  - [x] 7.2 Write property test for CSV round-trip
     - **Property 10: CSV Round-Trip**
     - **Validates: Requirements 4.8**
 
-  - [ ]* 7.3 Write property test for CSV structure invariants
+  - [x] 7.3 Write property test for CSV structure invariants
     - **Property 11: CSV Structure Invariants**
     - **Validates: Requirements 4.2, 4.3, 4.4, 4.5, 4.6, 4.7**
 
-  - [ ]* 7.4 Write property test for units column correctness
+  - [x] 7.4 Write property test for units column correctness
     - **Property 20: Units Column Correctness**
     - **Validates: Requirements 10.3, 10.4**
 
 - [ ] 8. Phase 2: Core Processing Pipeline - ProcessingOrchestrator
-  - [ ] 8.1 Implement ProcessingOrchestrator class
+  - [x] 8.1 Implement ProcessingOrchestrator class
     - Implement process_single() for single image processing
     - Implement process_batch() for directory processing
     - Coordinate ImageLoader, SegmentationEngine, MeasurementEngine, CSVWriter
@@ -178,15 +178,15 @@ This implementation follows a Docker-first architecture where all processing run
     - Aggregate results into single CSV
     - _Requirements: 9.1, 9.2, 9.3, 9.5, 9.6_
 
-  - [ ]* 8.2 Write property test for partial batch failure resilience
+  - [x] 8.2 Write property test for partial batch failure resilience
     - **Property 18: Partial Batch Failure Resilience**
     - **Validates: Requirements 9.5**
 
-  - [ ]* 8.3 Write property test for batch result aggregation
+  - [x] 8.3 Write property test for batch result aggregation
     - **Property 19: Batch Result Aggregation**
     - **Validates: Requirements 9.2, 9.6**
 
-  - [ ]* 8.4 Implement parallel processing support
+  - [x] 8.4 Implement parallel processing support
     - Add parallel flag and max_workers parameter
     - Use concurrent.futures for parallel image processing
     - _Requirements: 9.4_
