@@ -43,13 +43,13 @@ LABEL description="Sediment grain analysis tool with ImageGrains and PyImageJ"
 LABEL version="1.0.0"
 
 # Install runtime dependencies
-# - OpenJDK 21: Required for PyImageJ/ImageJ2 runtime (only version available in Debian Trixie)
+# - OpenJDK 21 JDK: Required for PyImageJ/ImageJ2 (full JDK needed for jar tool, not just JRE)
 # - Maven: Required for PyImageJ to download ImageJ2 components
 # - libgl1: Required for headless image processing
 # - libglib2.0-0: Required for various image libraries
 # - curl: Required for HTTP health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    openjdk-21-jre-headless \
+    openjdk-21-jdk-headless \
     maven \
     libgl1 \
     libglib2.0-0 \
@@ -81,19 +81,22 @@ ENV SEDIMENTAL_INSIDE_CONTAINER=1
 # Create application directories
 RUN mkdir -p /app /data/input /data/output /data/temp /data/jobs
 
+# Pre-initialize PyImageJ to download ImageJ2 JARs from Maven Central.
+# This step is placed BEFORE copying application code so that Docker caches
+# the Maven download layer independently of code changes. Without this ordering,
+# any edit to sedimental/ or tests/ would invalidate this layer and re-trigger
+# the slow (~5-10 min) Maven dependency resolution on every build.
+RUN python -c "import imagej; ij = imagej.init(); print('ImageJ2 initialized:', ij.getVersion())" || true
+
 # Set working directory
 WORKDIR /app
 
-# Copy application code
+# Copy application code (after PyImageJ init so code changes don't bust that cache layer)
 COPY sedimental/ /app/sedimental/
 COPY tests/ /app/tests/
 COPY entrypoint.sh /app/entrypoint.sh
 COPY segment_image.py /app/segment_image.py
 RUN chmod +x /app/entrypoint.sh
-
-# Pre-initialize PyImageJ to download ImageJ2 components during build
-# This avoids slow first-run initialization
-RUN python -c "import imagej; ij = imagej.init(); print('ImageJ2 initialized:', ij.getVersion())" || true
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash sedimental \

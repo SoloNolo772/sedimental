@@ -6,7 +6,6 @@ including health check endpoints for container readiness verification and a
 job-based processing API.
 """
 
-import asyncio
 import json
 import logging
 import os
@@ -18,7 +17,7 @@ from pathlib import Path
 from typing import List, Optional
 
 try:
-    from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+    from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import FileResponse, JSONResponse
     import uvicorn
@@ -142,10 +141,6 @@ def _run_job(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Option
         _update_job(job_id, status="failed", error_message=str(exc))
 
 
-async def _run_job_async(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Optional[dict]) -> None:
-    """Run the blocking job in a thread pool so the event loop stays free."""
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, _run_job, job_id, job_dir, save_masks, metadata_dict)
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +290,7 @@ def create_app() -> "FastAPI":
 
     @app.post("/api/jobs", status_code=201)
     async def create_job(
+        background_tasks: BackgroundTasks,
         files: List[UploadFile] = File(...),
         sample_id: Optional[str] = Form(None),
         location_lat: Optional[float] = Form(None),
@@ -380,7 +376,7 @@ def create_app() -> "FastAPI":
             conn.commit()
 
         # Kick off background processing
-        asyncio.create_task(_run_job_async(job_id, job_dir, save_masks, metadata_dict))
+        background_tasks.add_task(_run_job, job_id, job_dir, save_masks, metadata_dict)
 
         return {"job_id": job_id, "status": "pending", "files": filenames}
 
