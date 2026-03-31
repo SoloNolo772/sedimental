@@ -191,13 +191,13 @@ This implementation follows a Docker-first architecture where all processing run
     - Use concurrent.futures for parallel image processing
     - _Requirements: 9.4_
 
-- [ ] 9. Checkpoint - Core pipeline verification
+- [x] 9. Checkpoint - Core pipeline verification
   - Ensure all core components work together inside Docker
   - Run unit tests for all pipeline components
   - Ask the user if questions arise
 
 - [ ] 10. Phase 3: CLI Interface
-  - [ ] 10.1 Implement CLI argument parser
+  - [x] 10.1 Implement CLI argument parser
     - Create main() entry point with argparse
     - Add 'process' subcommand with input/output arguments
     - Add --metadata, --save-masks, --scale, --verbose flags
@@ -205,7 +205,7 @@ This implementation follows a Docker-first architecture where all processing run
     - Implement --help output
     - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-  - [ ] 10.2 Implement Docker invocation wrapper
+  - [x] 10.2 Implement Docker invocation wrapper
     - Implement run_docker_process() for process command
     - Map local paths to container volume mounts
     - Pass CLI arguments to container entrypoint
@@ -213,24 +213,24 @@ This implementation follows a Docker-first architecture where all processing run
     - Implement run_docker_web() for web command
     - _Requirements: 6.7, 8.3_
 
-  - [ ] 10.3 Implement exit code handling
+  - [x] 10.3 Implement exit code handling
     - Return exit code 0 on success
     - Return non-zero exit code on failure
     - Display error messages on failure
     - _Requirements: 6.8, 6.9_
 
-  - [ ]* 10.4 Write property test for exit code correctness
+  - [x] 10.4 Write property test for exit code correctness
     - **Property 17: Exit Code Correctness**
     - **Validates: Requirements 6.8, 6.9**
 
-- [ ] 11. Checkpoint - CLI verification
+- [x] 11. Checkpoint - CLI verification
   - Test CLI with single image and directory inputs
   - Verify metadata auto-discovery and override
   - Verify --save-masks flag produces TIFF outputs
   - Ask the user if questions arise
 
 - [ ] 12. Phase 4: Web Interface - FastAPI Server
-  - [ ] 12.1 Implement FastAPI application and routes
+  - [x] 12.1 Implement FastAPI application and routes
     - Create FastAPI app with CORS configuration
     - Implement POST /api/jobs for job creation
     - Accept file uploads and metadata form fields
@@ -239,7 +239,7 @@ This implementation follows a Docker-first architecture where all processing run
     - Implement GET /api/jobs/{job_id}/masks/{filename} for mask download
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-  - [ ] 12.2 Implement file upload validation
+  - [x] 12.2 Implement file upload validation
     - Validate uploaded files are valid JPEGs
     - Enforce maximum file size limit
     - Return descriptive error messages

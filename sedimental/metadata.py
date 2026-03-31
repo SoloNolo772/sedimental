@@ -253,7 +253,7 @@ class MetadataParser:
         Raises:
             MetadataParseError: If value is not numeric or out of range.
         """
-        if not isinstance(value, (int, float)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise MetadataParseError(
                 path_str, f'"{field_ctx}" must be a number'
             )

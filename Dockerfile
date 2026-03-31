@@ -75,6 +75,9 @@ ENV QT_QPA_PLATFORM=offscreen
 ENV NAPARI_HEADLESS=1
 ENV PYIMAGEJ_HEADLESS=1
 
+# Marker so cli.py knows it is running inside the container
+ENV SEDIMENTAL_INSIDE_CONTAINER=1
+
 # Create application directories
 RUN mkdir -p /app /data/input /data/output /data/temp /data/jobs
 
