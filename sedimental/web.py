@@ -19,7 +19,8 @@ from typing import List, Optional
 try:
     from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import FileResponse, JSONResponse
+    from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+    from fastapi.staticfiles import StaticFiles
     import uvicorn
     FASTAPI_AVAILABLE = True
 except ImportError:
@@ -39,6 +40,7 @@ JPEG_MAGIC_BYTES = b"\xff\xd8\xff"
 JOBS_DIR = Path(os.environ.get("SEDIMENTAL_JOBS_DIR", "/data/jobs"))
 HEALTH_STATUS_FILE = Path("/tmp/sedimental_health_status")
 DB_PATH = JOBS_DIR / "jobs.db"
+STATIC_DIR = Path(__file__).parent / "static"
 
 # ---------------------------------------------------------------------------
 # Database helpers
@@ -122,11 +124,15 @@ def _run_job(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Option
         orchestrator = ProcessingOrchestrator()
         result_csv = output_dir / "results.csv"
 
+        def _on_progress(current: int, total: int) -> None:
+            _update_job(job_id, progress_current=current, progress_total=total)
+
         batch = orchestrator.process_batch(
             input_path=input_dir,
             output_path=result_csv,
             metadata_path=meta_path,
             save_masks=save_masks,
+            progress_callback=_on_progress,
         )
 
         _update_job(
@@ -248,6 +254,9 @@ def create_app() -> "FastAPI":
         allow_headers=["*"],
     )
 
+    if STATIC_DIR.exists():
+        app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
     # ------------------------------------------------------------------
     # Health endpoints
     # ------------------------------------------------------------------
@@ -272,17 +281,12 @@ def create_app() -> "FastAPI":
     async def detailed_health():
         return get_health_status()
 
-    @app.get("/")
+    @app.get("/", response_class=HTMLResponse)
     async def root():
-        return {
-            "name": "Sedimental API",
-            "version": "1.0.0",
-            "description": "Sediment grain analysis tool",
-            "endpoints": {
-                "health": "/health",
-                "jobs": "/api/jobs",
-            },
-        }
+        index = STATIC_DIR / "index.html"
+        if index.exists():
+            return HTMLResponse(content=index.read_text(), status_code=200)
+        return HTMLResponse(content="<h1>Sedimental API</h1><p>Static files not found.</p>", status_code=200)
 
     # ------------------------------------------------------------------
     # Job endpoints

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sedimental – Grain Analysis</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #222; padding: 2rem; }
+    h1 { font-size: 1.6rem; margin-bottom: 0.25rem; }
+    p.subtitle { color: #555; margin-bottom: 2rem; }
+    .card { background: #fff; border-radius: 8px; padding: 1.5rem; max-width: 640px; margin: 0 auto; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+    label { display: block; font-size: .875rem; font-weight: 600; margin-bottom: .25rem; margin-top: 1rem; }
+    input[type="text"], input[type="number"], input[type="date"], input[type="file"] {
+      width: 100%; padding: .5rem .75rem; border: 1px solid #ccc; border-radius: 6px; font-size: .9rem;
+    }
+    input[type="file"] { padding: .4rem; }
+    .row { display: flex; gap: 1rem; }
+    .row > div { flex: 1; }
+    .checkbox-row { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; }
+    .checkbox-row input { width: auto; }
+    button[type="submit"] {
+      margin-top: 1.5rem; width: 100%; padding: .65rem; background: #2563eb; color: #fff;
+      border: none; border-radius: 6px; font-size: 1rem; cursor: pointer; font-weight: 600;
+    }
+    button[type="submit"]:disabled { background: #93c5fd; cursor: not-allowed; }
+    #status-section { margin-top: 1.5rem; display: none; }
+    .status-badge {
+      display: inline-block; padding: .25rem .75rem; border-radius: 999px; font-size: .8rem; font-weight: 700;
+    }
+    .badge-pending   { background: #fef9c3; color: #854d0e; }
+    .badge-processing{ background: #dbeafe; color: #1e40af; }
+    .badge-completed { background: #dcfce7; color: #166534; }
+    .badge-failed    { background: #fee2e2; color: #991b1b; }
+    progress { width: 100%; height: 10px; margin-top: .5rem; border-radius: 5px; }
+    #error-msg { color: #b91c1c; margin-top: .75rem; font-size: .875rem; }
+    #results-section { margin-top: 1rem; display: none; }
+    #results-section a { display: inline-block; margin-top: .5rem; color: #2563eb; font-weight: 600; text-decoration: none; }
+    #results-section a:hover { text-decoration: underline; }
+    #masks-list { list-style: none; margin-top: .5rem; }
+    #masks-list li a { display: block; font-size: .875rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Sedimental</h1>
+    <p class="subtitle">Upload sediment images for automated grain analysis.</p>
+
+    <form id="upload-form" enctype="multipart/form-data">
+      <label for="files">JPEG Images <span style="font-weight:400;color:#666">(one or more)</span></label>
+      <input type="file" id="files" name="files" accept=".jpg,.jpeg,image/jpeg" multiple required />
+
+      <label for="sample_id">Sample ID</label>
+      <input type="text" id="sample_id" name="sample_id" placeholder="e.g. RIVER-42" />
+
+      <label>Location</label>
+      <div class="row">
+        <div>
+          <input type="number" id="location_lat" name="location_lat" placeholder="Latitude" step="any" min="-90" max="90" />
+        </div>
+        <div>
+          <input type="number" id="location_lon" name="location_lon" placeholder="Longitude" step="any" min="-180" max="180" />
+        </div>
+      </div>
+
+      <label for="location_description">Location Description</label>
+      <input type="text" id="location_description" name="location_description" placeholder="e.g. Colorado River, Mile 42" />
+
+      <label for="capture_date">Capture Date</label>
+      <input type="date" id="capture_date" name="capture_date" />
+
+      <label for="scale_ppm">Scale (pixels / mm)</label>
+      <input type="number" id="scale_ppm" name="scale_ppm" placeholder="e.g. 25.4" step="any" min="0" />
+
+      <label for="submitted_by">Submitted By</label>
+      <input type="text" id="submitted_by" name="submitted_by" placeholder="Your name (optional)" />
+
+      <div class="checkbox-row">
+        <input type="checkbox" id="save_masks" name="save_masks" value="true" />
+        <label for="save_masks" style="margin:0">Save segmentation masks (TIFF)</label>
+      </div>
+
+      <button type="submit" id="submit-btn">Analyse Images</button>
+    </form>
+
+    <div id="status-section">
+      <p>Status: <span id="status-badge" class="status-badge">—</span></p>
+      <progress id="progress-bar" value="0" max="1"></progress>
+      <p id="progress-text" style="font-size:.8rem;color:#555;margin-top:.25rem"></p>
+      <p id="error-msg"></p>
+    </div>
+
+    <div id="results-section">
+      <p style="font-weight:600">Results ready</p>
+      <a id="csv-link" href="#" download>⬇ Download results.csv</a>
+      <ul id="masks-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('upload-form');
+    const submitBtn = document.getElementById('submit-btn');
+    const statusSection = document.getElementById('status-section');
+    const statusBadge = document.getElementById('status-badge');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const errorMsg = document.getElementById('error-msg');
+    const resultsSection = document.getElementById('results-section');
+    const csvLink = document.getElementById('csv-link');
+    const masksList = document.getElementById('masks-list');
+
+    let pollTimer = null;
+
+    function setBadge(status) {
+      statusBadge.textContent = status;
+      statusBadge.className = 'status-badge badge-' + status;
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+    }
+
+    function startPolling(jobId) {
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(() => pollJob(jobId), 2000);
+    }
+
+    async function pollJob(jobId) {
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`);
+        if (!res.ok) { showError('Failed to fetch job status.'); return; }
+        const data = await res.json();
+
+        setBadge(data.status);
+
+        const cur = data.progress?.current ?? 0;
+        const tot = data.progress?.total ?? 0;
+        progressBar.value = cur;
+        progressBar.max = tot > 0 ? tot : 1;
+        progressText.textContent = tot > 0 ? `${cur} / ${tot} images` : '';
+
+        if (data.status === 'completed') {
+          clearInterval(pollTimer);
+          showResults(jobId, data.save_masks, data.files);
+        } else if (data.status === 'failed') {
+          clearInterval(pollTimer);
+          showError(data.error_message || 'Processing failed.');
+        }
+      } catch (e) {
+        showError('Network error while polling job status.');
+      }
+    }
+
+    function showResults(jobId, saveMasks, files) {
+      resultsSection.style.display = 'block';
+      csvLink.href = `/api/jobs/${jobId}/results`;
+      csvLink.download = `results_${jobId}.csv`;
+
+      masksList.innerHTML = '';
+      if (saveMasks && files) {
+        files.forEach(f => {
+          const stem = f.replace(/\.[^.]+$/, '');
+          const maskFile = `${stem}_mask.tiff`;
+          const li = document.createElement('li');
+          const a = document.createElement('a');
+          a.href = `/api/jobs/${jobId}/masks/${maskFile}`;
+          a.download = maskFile;
+          a.textContent = `⬇ ${maskFile}`;
+          li.appendChild(a);
+          masksList.appendChild(li);
+        });
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorMsg.textContent = '';
+      resultsSection.style.display = 'none';
+      masksList.innerHTML = '';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
+
+      const fd = new FormData(form);
+
+      // Coerce save_masks to boolean string expected by FastAPI Form(bool)
+      if (!form.save_masks.checked) {
+        fd.set('save_masks', 'false');
+      }
+
+      // Strip empty optional fields so FastAPI treats them as None
+      ['sample_id','location_lat','location_lon','location_description',
+       'capture_date','scale_ppm','submitted_by'].forEach(k => {
+        if (!fd.get(k)) fd.delete(k);
+      });
+
+      try {
+        const res = await fetch('/api/jobs', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showError(data.detail || 'Upload failed.');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Analyse Images';
+          return;
+        }
+
+        statusSection.style.display = 'block';
+        setBadge('pending');
+        startPolling(data.job_id);
+      } catch (err) {
+        showError('Network error during upload.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Analyse Images';
+      }
+    });
+  </script>
+</body>
+</html>

@@ -24,6 +24,10 @@ services:
       - ./data/jobs:/data/jobs
       # Mount source code for development (optional - comment out for production)
       - ./sedimental:/app/sedimental:ro
+      # Mount tests directory so test changes are picked up without rebuilding
+      - ./tests:/app/tests:ro
+      # Persist Maven/ImageJ2 JARs so they aren't re-downloaded on every startup
+      - imagej2_cache:/home/sedimental/.m2
     
     # Environment variables for configuration
     environment:
@@ -47,6 +51,9 @@ services:
       - NAPARI_HEADLESS=1
       - QT_QPA_PLATFORM=offscreen
       - DISPLAY=:0
+      
+      # GPU configuration — set to 'true' to enable CUDA acceleration
+      - SEDIMENTAL_USE_GPU=true
     
     # Port mapping for web interface
     ports:
@@ -70,11 +77,11 @@ services:
           memory: 4G
         reservations:
           memory: 2G
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
-# Named volumes (alternative to bind mounts for production)
-# Uncomment these and update service volumes for production deployment
-# volumes:
-#   sedimental-input:
-#   sedimental-output:
-#   sedimental-temp:
-#   sedimental-jobs:
+# Named volumes
+volumes:
+  imagej2_cache:  # Persists Maven/ImageJ2 JARs across container restarts

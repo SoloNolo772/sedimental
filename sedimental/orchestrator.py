@@ -51,7 +51,21 @@ class ProcessingOrchestrator:
     @property
     def seg_engine(self) -> SegmentationEngine:
         if self._seg_engine is None:
-            self._seg_engine = SegmentationEngine()
+            import os
+            use_gpu = os.environ.get("SEDIMENTAL_USE_GPU", "false").lower() == "true"
+            if use_gpu:
+                # Verify CUDA is actually available before passing gpu=True
+                try:
+                    import torch
+                    use_gpu = torch.cuda.is_available()
+                    if not use_gpu:
+                        logger.warning("SEDIMENTAL_USE_GPU=true but no CUDA device found; falling back to CPU")
+                except ImportError:
+                    use_gpu = False
+                    logger.warning("SEDIMENTAL_USE_GPU=true but torch not installed; falling back to CPU")
+            if use_gpu:
+                logger.info("GPU acceleration enabled for segmentation")
+            self._seg_engine = SegmentationEngine(gpu=use_gpu)
         return self._seg_engine
 
     @property
@@ -140,6 +154,7 @@ class ProcessingOrchestrator:
         save_masks: bool = False,
         parallel: bool = False,
         max_workers: int = 4,
+        progress_callback=None,
     ) -> BatchResult:
         """Process all JPEGs in a directory and write a single CSV.
 
@@ -158,6 +173,8 @@ class ProcessingOrchestrator:
             parallel: When True, images are processed concurrently using a
                       ThreadPoolExecutor with up to max_workers threads.
             max_workers: Maximum number of worker threads when parallel=True.
+            progress_callback: Optional callable(current: int, total: int)
+                               invoked after each image completes.
 
         Returns:
             BatchResult summarising totals, successes, failures, and errors.
@@ -205,18 +222,21 @@ class ProcessingOrchestrator:
         results: List[ImageResult] = []
         errors: Dict[str, str] = {}
 
+        completed_count = 0
+
         if parallel and total > 1:
             workers = min(max_workers, total)
-            # Preserve input order by collecting futures keyed to their path
             with ThreadPoolExecutor(max_workers=workers) as executor:
                 future_to_path = {
                     executor.submit(_process_one, p): p for p in image_paths
                 }
-                # Collect in submission order to keep results deterministic
                 ordered: Dict[Path, "ProcessingResult"] = {}
                 for future in as_completed(future_to_path):
                     img_path, proc_result = future.result()
                     ordered[img_path] = proc_result
+                    completed_count += 1
+                    if progress_callback is not None:
+                        progress_callback(completed_count, total)
 
             for image_path in image_paths:
                 proc_result = ordered[image_path]
@@ -227,6 +247,9 @@ class ProcessingOrchestrator:
         else:
             for image_path in image_paths:
                 _, proc_result = _process_one(image_path)
+                completed_count += 1
+                if progress_callback is not None:
+                    progress_callback(completed_count, total)
                 if proc_result.success and proc_result.image_result is not None:
                     results.append(proc_result.image_result)
                 else:

@@ -6,6 +6,7 @@ images and produce labeled segmentation masks.
 """
 
 import logging
+import time
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -53,7 +54,21 @@ class SegmentationEngine:
                 gpu=self._gpu,
                 pretrained_model=self._model_type,
             )
-            logger.debug("Cellpose model ready")
+
+            # Log which device the model actually loaded onto
+            try:
+                import torch
+                params = list(self._model.net.parameters())
+                device = str(params[0].device) if params else "unknown"
+                if self._gpu and torch.cuda.is_available():
+                    gpu_name = torch.cuda.get_device_name(0)
+                    mem_total = torch.cuda.get_device_properties(0).total_memory // (1024 ** 2)
+                    logger.info("Cellpose model loaded on GPU: %s (%d MB VRAM)", gpu_name, mem_total)
+                else:
+                    logger.info("Cellpose model loaded on CPU (device=%s)", device)
+            except Exception:
+                logger.debug("Cellpose model ready (device check skipped)")
+
         return self._model
 
     # ------------------------------------------------------------------
@@ -83,6 +98,7 @@ class SegmentationEngine:
             model = self._get_model()
             logger.info("Segmenting image '%s' (%dx%d)", filename, image.shape[1], image.shape[0])
 
+            t0 = time.time()
             # Cellpose eval returns (masks_list, flows_list, styles_list) for a
             # batch; we pass a single image so index [0].
             masks_list, _flows, _styles = model.eval(
@@ -90,7 +106,9 @@ class SegmentationEngine:
                 diameter=None,
                 channels=None,
             )
+            elapsed = time.time() - t0
             mask: np.ndarray = masks_list[0]
+            logger.info("Segmentation completed in %.2fs", elapsed)
 
         except SegmentationError:
             raise

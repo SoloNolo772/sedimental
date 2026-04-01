@@ -35,10 +35,16 @@ def tmp_jobs_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def client(tmp_jobs_dir):
-    """Return a TestClient with a fresh app and isolated DB."""
+def client(tmp_jobs_dir, monkeypatch):
+    """Return a TestClient with a fresh app and isolated DB.
+
+    Background job processing is patched out so tests don't trigger the
+    real processing pipeline (which would attempt to initialise PyImageJ).
+    """
     import sedimental.web as web_module
     from sedimental.web import create_app, init_db
+    # Prevent background tasks from running the real processing pipeline
+    monkeypatch.setattr(web_module, "_run_job", lambda *args, **kwargs: None)
     # Initialise the DB before any requests so the table exists
     init_db()
     app = create_app()
@@ -84,9 +90,7 @@ class TestAppCreation:
     def test_root_endpoint(self, client):
         resp = client.get("/")
         assert resp.status_code == 200
-        data = resp.json()
-        assert "Sedimental" in data["name"]
-        assert "/api/jobs" in data["endpoints"]["jobs"]
+        assert "Sedimental" in resp.text
 
 
 # ---------------------------------------------------------------------------

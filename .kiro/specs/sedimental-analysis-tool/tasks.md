@@ -252,14 +252,14 @@ This implementation follows a Docker-first architecture where all processing run
     - Store result paths and error messages
     - _Requirements: 7.4_
 
-  - [ ] 12.4 Implement background job processing
+  - [x] 12.4 Implement background job processing
     - Process jobs asynchronously
     - Update job status during processing
     - Store results in job-specific directories
     - _Requirements: 7.4, 7.5_
 
 - [ ] 13. Phase 4: Web Interface - Frontend
-  - [ ] 13.1 Create minimal web frontend
+  - [x] 13.1 Create minimal web frontend
     - Create HTML upload form
     - Add metadata input fields (sample_id, location, capture_date)
     - Add save_masks checkbox
@@ -267,38 +267,38 @@ This implementation follows a Docker-first architecture where all processing run
     - Provide download links for results
     - _Requirements: 7.1, 7.2, 7.3, 7.4, 7.5, 7.6_
 
-- [ ] 14. Checkpoint - Web interface verification
+- [x] 14. Checkpoint - Web interface verification
   - Test file upload and job creation
   - Verify job status polling
   - Test results and mask downloads
   - Ask the user if questions arise
 
 - [ ] 15. Phase 5: Integration & Polish
-  - [ ] 15.1 Write CLI integration tests
+  - [x] 15.1 Write CLI integration tests
     - Test single image processing end-to-end
     - Test batch processing with metadata
     - Test error handling for invalid inputs
     - _Requirements: 6.1, 6.2, 9.1, 9.5_
 
-  - [ ] 15.2 Write web API integration tests
+  - [x] 15.2 Write web API integration tests
     - Test upload and download flow
     - Test job status transitions
     - Test concurrent job handling
     - _Requirements: 7.1, 7.4, 7.5_
 
-  - [ ] 15.3 Write Docker integration tests
+  - [x] 15.3 Write Docker integration tests
     - Test container startup and health check
     - Test volume mount functionality
     - Test web service availability
     - _Requirements: 8.1, 8.5, 8.7_
 
-  - [ ] 15.4 Create test fixtures and sample data
+  - [x] 15.4 Create test fixtures and sample data
     - Create sample JPEG images for testing
     - Create sample metadata.json files
     - Create corrupted image files for error testing
     - Set up Hypothesis generators for property tests
 
-- [ ] 16. Final checkpoint - Full system verification
+- [x] 16. Final checkpoint - Full system verification
   - Run complete test suite (unit, property, integration)
   - Verify Docker image builds and runs correctly
   - Ensure all tests pass, ask the user if questions arise

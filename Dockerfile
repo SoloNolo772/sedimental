@@ -1,54 +1,31 @@
 # =============================================================================
-# Sedimental Analysis Tool - Multi-stage Dockerfile
+# Sedimental Analysis Tool - Dockerfile
 # =============================================================================
-# Stage 1: Builder - Install build dependencies and compile requirements
-# Stage 2: Runtime - Minimal image with only runtime dependencies
+# Single-stage build on CUDA 12.1 + cuDNN 8 (Ubuntu 22.04) so that the
+# Python environment, CUDA libraries, and application all share the same base.
 # =============================================================================
 
-# -----------------------------------------------------------------------------
-# Stage 1: Builder
-# -----------------------------------------------------------------------------
-FROM python:3.10-slim AS builder
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    git \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Create virtual environment for clean dependency isolation
-RUN python -m venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Upgrade pip and install wheel
-RUN pip install --no-cache-dir --upgrade pip wheel setuptools
-
-# Ensure /tmp has proper permissions for pip
-RUN chmod 1777 /tmp
-
-# Install Python dependencies
-# Note: We install these first to leverage Docker layer caching
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt
-
-# -----------------------------------------------------------------------------
-# Stage 2: Runtime
-# -----------------------------------------------------------------------------
-FROM python:3.10-slim AS runtime
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 # Labels for image metadata
 LABEL maintainer="Sedimental Team"
 LABEL description="Sediment grain analysis tool with ImageGrains and PyImageJ"
 LABEL version="1.0.0"
 
-# Install runtime dependencies
-# - OpenJDK 21 JDK: Required for PyImageJ/ImageJ2 (full JDK needed for jar tool, not just JRE)
-# - Maven: Required for PyImageJ to download ImageJ2 components
-# - libgl1: Required for headless image processing
-# - libglib2.0-0: Required for various image libraries
-# - curl: Required for HTTP health checks
+# Install system dependencies
+# - python3.10 + pip: runtime and package management
+# - build-essential / git: needed to compile some Python packages
+# - OpenJDK 21 JDK: required for PyImageJ/ImageJ2
+# - Maven: required for PyImageJ to download ImageJ2 JARs
+# - libgl1 / libglib2.0-0 etc.: headless image processing support
+# - curl: HTTP health checks
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    build-essential \
+    git \
+    curl \
     openjdk-21-jdk-headless \
     maven \
     libgl1 \
@@ -57,17 +34,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxext6 \
     libxrender1 \
     libfontconfig1 \
-    curl \
     && rm -rf /var/lib/apt/lists/* \
-    && apt-get clean
+    && apt-get clean \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+    && python3.10 -m pip install --upgrade pip wheel setuptools
 
 # Set JAVA_HOME for PyImageJ
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
-
-# Copy virtual environment from builder
-COPY --from=builder /opt/venv /opt/venv
-ENV PATH="/opt/venv/bin:$PATH"
 
 # Set environment variables for headless operation
 ENV DISPLAY=:0
@@ -78,20 +53,25 @@ ENV PYIMAGEJ_HEADLESS=1
 # Marker so cli.py knows it is running inside the container
 ENV SEDIMENTAL_INSIDE_CONTAINER=1
 
+# Ensure /tmp has proper permissions for pip
+RUN chmod 1777 /tmp
+
+# Install Python dependencies
+# Placed before copying app code to leverage Docker layer caching
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
+
 # Create application directories
 RUN mkdir -p /app /data/input /data/output /data/temp /data/jobs
 
 # Pre-initialize PyImageJ to download ImageJ2 JARs from Maven Central.
-# This step is placed BEFORE copying application code so that Docker caches
-# the Maven download layer independently of code changes. Without this ordering,
-# any edit to sedimental/ or tests/ would invalidate this layer and re-trigger
-# the slow (~5-10 min) Maven dependency resolution on every build.
+# Placed BEFORE copying app code so code changes don't bust this slow cache layer.
 RUN python -c "import imagej; ij = imagej.init(); print('ImageJ2 initialized:', ij.getVersion())" || true
 
 # Set working directory
 WORKDIR /app
 
-# Copy application code (after PyImageJ init so code changes don't bust that cache layer)
+# Copy application code
 COPY sedimental/ /app/sedimental/
 COPY tests/ /app/tests/
 COPY entrypoint.sh /app/entrypoint.sh
@@ -107,13 +87,12 @@ USER sedimental
 # Expose web interface port
 EXPOSE 8080
 
-# Health check endpoint - uses HTTP endpoint when web server is running
-# Falls back to basic Python check for CLI-only containers
+# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health 2>/dev/null || /app/entrypoint.sh health
 
 # Default entrypoint
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-# Default command (can be overridden)
+# Default command
 CMD ["web", "--port", "8080"]

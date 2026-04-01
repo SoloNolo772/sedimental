@@ -1,0 +1,25 @@
+{
+  "default": {
+    "sample_id": "FIXTURE-001",
+    "location": {
+      "lat": 39.5,
+      "lon": -106.5,
+      "description": "Colorado River, Mile 42"
+    },
+    "capture_date": "2024-06-15",
+    "scale_ppm": 12.5,
+    "submitted_by": "fixture-generator"
+  },
+  "images": {
+    "sample_a.jpg": {
+      "sample_id": "FIXTURE-001-A",
+      "location": {
+        "lat": 39.6,
+        "lon": -106.6
+      }
+    },
+    "sample_b.jpg": {
+      "scale_ppm": 20.0
+    }
+  }
+}
