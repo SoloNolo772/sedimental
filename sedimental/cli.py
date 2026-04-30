@@ -151,7 +151,9 @@ def run_process_internal(args) -> int:
 
     Requirements: 6.8, 6.9
     """
-    configure_logging(verbose=getattr(args, "verbose", False))
+    log_file_env = os.environ.get("SEDIMENTAL_LOG_FILE")
+    log_file = Path(log_file_env) if log_file_env else None
+    configure_logging(verbose=getattr(args, "verbose", False), log_file=log_file)
 
     input_path = Path(args.input)
     output_path = Path(args.output)

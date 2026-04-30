@@ -26,6 +26,8 @@ try:
 except ImportError:
     FASTAPI_AVAILABLE = False
 
+from .logging import configure_logging
+
 logger = logging.getLogger("sedimental.web")
 
 # ---------------------------------------------------------------------------
@@ -469,6 +471,11 @@ def main():
     if not FASTAPI_AVAILABLE:
         print("Error: FastAPI not available. Install with: pip install fastapi uvicorn")
         return 1
+
+    # Configure logging with optional file output from environment variable
+    log_file_env = os.environ.get("SEDIMENTAL_LOG_FILE")
+    log_file = Path(log_file_env) if log_file_env else None
+    configure_logging(log_file=log_file)
 
     print(f"Starting Sedimental web server on {args.host}:{args.port}")
     app = create_app()
