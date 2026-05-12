@@ -145,6 +145,9 @@
         } else if (data.status === 'failed') {
           clearInterval(pollTimer);
           showError(data.error_message || 'Processing failed.');
+          // Re-enable submit button after failure
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Analyse Images';
         }
       } catch (e) {
         showError('Network error while polling job status.');
@@ -170,6 +173,10 @@
           masksList.appendChild(li);
         });
       }
+
+      // Re-enable submit button for next job
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Analyse Images';
     }
 
     form.addEventListener('submit', async (e) => {

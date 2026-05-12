@@ -21,6 +21,7 @@ This design document describes the architecture and implementation for deploying
 | Reverse Proxy | Caddy | Automatic HTTPS via Let's Encrypt, zero-config TLS, simple configuration |
 | Container Orchestration | Docker Compose | Already used in development, consistent deployment model |
 | Management Scripts | PowerShell + Bash | Cross-platform support for Windows and Linux/Mac users |
+| Config File Distribution | S3 Bucket | Keeps docker-compose.prod.yml and Caddyfile in version control; start script uploads to S3, instance pulls on boot |
 
 ## Architecture
 
@@ -117,7 +118,8 @@ The infrastructure is defined as a single CloudFormation template that creates a
 - EBS Volume (50 GB, gp3)
 - Elastic IP
 - Security Group
-- IAM Instance Profile (for CloudWatch logs, optional)
+- S3 Bucket (for configuration files - docker-compose.prod.yml, Caddyfile)
+- IAM Role and Instance Profile (for EC2 to read from S3)
 
 **Parameters:**
 
@@ -136,14 +138,63 @@ The infrastructure is defined as a single CloudFormation template that creates a
 | InstanceId | EC2 instance ID for use with start/stop scripts |
 | ElasticIP | Public IP address for DNS configuration |
 | PublicURL | Full HTTPS URL to access the application |
+| ConfigBucketName | S3 bucket name for uploading configuration files |
 
-### 2. User Data Script
+### 2. Configuration File Distribution via S3
+
+Configuration files (docker-compose.prod.yml, Caddyfile) are maintained in the Git repository under `deploy/docker/` and distributed to the EC2 instance via S3. This approach:
+
+- **Keeps configs in version control**: Changes are tracked, reviewed, and committed like any other code
+- **Automatic sync on start**: The start script uploads latest configs to S3 before starting the instance
+- **No embedded configs**: User Data script pulls from S3 rather than having configs embedded in CloudFormation
+- **Easy updates**: Change the file locally, commit, run start script - instance gets new config
+
+**Flow:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    Configuration Distribution Flow                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  1. Developer edits deploy/docker/docker-compose.prod.yml locally       │
+│                              │                                           │
+│                              ▼                                           │
+│  2. Developer commits changes to Git                                     │
+│                              │                                           │
+│                              ▼                                           │
+│  3. Developer runs start-instance.ps1 (or .sh)                          │
+│                              │                                           │
+│                              ▼                                           │
+│  4. Start script uploads deploy/docker/* to S3 bucket                   │
+│     (aws s3 sync deploy/docker/ s3://{bucket}/)                         │
+│                              │                                           │
+│                              ▼                                           │
+│  5. Start script starts EC2 instance                                     │
+│                              │                                           │
+│                              ▼                                           │
+│  6. User Data script on instance pulls configs from S3                  │
+│     (aws s3 cp s3://{bucket}/docker-compose.prod.yml /data/)            │
+│                              │                                           │
+│                              ▼                                           │
+│  7. Docker Compose starts with latest configuration                      │
+│                                                                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**S3 Bucket Contents:**
+```
+s3://{stack-name}-config-{account-id}/
+├── docker-compose.prod.yml    # Production Docker Compose configuration
+└── Caddyfile                  # Caddy reverse proxy configuration
+```
+
+### 3. User Data Script
 
 The user data script runs on every instance boot and performs:
 
 1. **EBS Volume Mount**: Mounts the data volume to `/data`
 2. **Docker Setup**: Ensures Docker and NVIDIA Container Toolkit are running
-3. **Application Startup**: Runs Docker Compose to start Caddy and Sedimental
+3. **Config Download**: Pulls docker-compose.prod.yml and Caddyfile from S3
+4. **Application Startup**: Runs Docker Compose to start Caddy and Sedimental
 
 ```bash
 #!/bin/bash
@@ -153,13 +204,13 @@ The user data script runs on every instance boot and performs:
 # 2. Format volume if new (ext4)
 # 3. Mount to /data
 # 4. Create directory structure
-# 5. Write docker-compose.prod.yml
-# 6. Write Caddyfile
+# 5. Download docker-compose.prod.yml from S3
+# 6. Download Caddyfile from S3 (with domain substitution)
 # 7. Pull latest images
 # 8. Start services with docker compose
 ```
 
-### 3. Docker Compose Production Configuration
+### 4. Docker Compose Production Configuration
 
 **File: `/data/docker-compose.prod.yml`**
 
@@ -177,7 +228,7 @@ The production Docker Compose configuration differs from development:
 | caddy | caddy:2-alpine | 80, 443 | Reverse proxy, TLS termination |
 | sedimental | sedimental:latest | 8080 (internal) | Application server |
 
-### 4. Caddy Configuration
+### 5. Caddy Configuration
 
 **File: `/data/Caddyfile`**
 
@@ -198,7 +249,7 @@ Caddy automatically:
 - Redirects HTTP to HTTPS
 - Stores certificates in `/data/caddy_data`
 
-### 5. Management Scripts
+### 6. Management Scripts
 
 #### Start Script (PowerShell: `start-instance.ps1`, Bash: `start-instance.sh`)
 
@@ -206,13 +257,15 @@ Caddy automatically:
 ┌─────────────────────────────────────────┐
 │           Start Instance Flow           │
 ├─────────────────────────────────────────┤
-│ 1. Check current instance state         │
+│ 1. Upload config files to S3            │
+│    └─ deploy/docker/* → S3 bucket       │
+│ 2. Check current instance state         │
 │    └─ If running: show URL and exit     │
-│ 2. Start instance via AWS CLI           │
-│ 3. Wait for "running" state             │
-│ 4. Wait for health endpoint (retry)     │
-│ 5. Display success message with URL     │
-│ 6. Handle timeout with error guidance   │
+│ 3. Start instance via AWS CLI           │
+│ 4. Wait for "running" state             │
+│ 5. Wait for health endpoint (retry)     │
+│ 6. Display success message with URL     │
+│ 7. Handle timeout with error guidance   │
 └─────────────────────────────────────────┘
 ```
 
@@ -247,7 +300,7 @@ Caddy automatically:
 └─────────────────────────────────────────┘
 ```
 
-### 6. Directory Structure
+### 7. Directory Structure
 
 ```
 deploy/
@@ -312,9 +365,15 @@ Parameters:
 **File: `config.env`**
 
 ```bash
+# AWS Profile - REQUIRED for all AWS CLI commands
+# This ensures scripts use the project-specific IAM credentials
+# instead of system default credentials
+AWS_PROFILE=sedimental
+
 # Required - set after CloudFormation deployment
 INSTANCE_ID=i-0123456789abcdef0
-REGION=us-east-1
+REGION=us-west-2
+CONFIG_BUCKET=sedimental-stack-config-123456789012
 
 # Optional - for status display
 DOMAIN_NAME=sedimental.example.com
@@ -325,6 +384,13 @@ START_TIMEOUT=300
 STOP_TIMEOUT=120
 HEALTH_CHECK_TIMEOUT=180
 ```
+
+**Important:** All management scripts will use the `AWS_PROFILE` setting from config.env. This ensures:
+- Scripts never accidentally use default/other AWS credentials
+- The project remains isolated from other AWS work on the same machine
+- Users must explicitly configure the profile name for their setup
+
+**CONFIG_BUCKET:** This is the S3 bucket created by CloudFormation for storing configuration files. The start script uses this to upload docker-compose.prod.yml and Caddyfile before starting the instance.
 
 ### EBS Volume Directory Structure
 
@@ -341,7 +407,8 @@ HEALTH_CHECK_TIMEOUT=180
 ├── temp/                    # Temporary processing files
 ├── caddy_data/             # Caddy certificates and state
 │   └── certificates/       # Let's Encrypt certificates
-└── docker-compose.prod.yml # Production compose file (written by user data)
+├── docker-compose.prod.yml # Production compose file (downloaded from S3 on boot)
+└── Caddyfile               # Caddy configuration (downloaded from S3 on boot)
 ```
 
 ## Error Handling
@@ -421,7 +488,8 @@ Since this feature involves Infrastructure as Code (CloudFormation), UI-less scr
 
 ### Pre-Deployment Checklist
 
-- [ ] AWS CLI configured with appropriate credentials
+- [ ] AWS CLI configured with named profile (e.g., `aws configure --profile sedimental`)
+- [ ] AWS_PROFILE set in config.env to match your profile name
 - [ ] EC2 key pair created in target region
 - [ ] Domain DNS configured (if using custom domain)
 - [ ] Service quotas allow g4dn instance launch

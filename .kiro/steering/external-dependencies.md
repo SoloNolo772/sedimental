@@ -1,5 +1,6 @@
 ---
 inclusion: auto
+description: Guidelines for verifying external library APIs before writing integration code
 ---
 
 # External Dependencies Verification

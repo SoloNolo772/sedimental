@@ -1,1 +1,6 @@
 .vscode/
+secret_aws_keys.txt
+*.pem
+
+# Deployment configuration (contains instance-specific values)
+deploy/scripts/config.env

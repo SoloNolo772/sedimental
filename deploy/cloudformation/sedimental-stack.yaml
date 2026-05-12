@@ -1,0 +1,649 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Sedimental Application - Single EC2 GPU Instance Deployment
+  Deploys a g4dn GPU instance with Caddy reverse proxy for automatic HTTPS,
+  EBS persistent storage, and Elastic IP for stable addressing.
+
+# =============================================================================
+# Parameters
+# =============================================================================
+Parameters:
+  InstanceType:
+    Type: String
+    Default: g4dn.xlarge
+    AllowedValues:
+      - g4dn.xlarge
+      - g4dn.2xlarge
+      - g4dn.4xlarge
+      - g5.xlarge
+      - g5.2xlarge
+      - g5.4xlarge
+    Description: >
+      EC2 GPU instance type. g4dn.xlarge is recommended for most workloads.
+      g5 instances offer newer GPUs but may have limited availability.
+    ConstraintDescription: Must be a valid GPU instance type (g4dn or g5 family).
+
+  VolumeSize:
+    Type: Number
+    Default: 50
+    MinValue: 20
+    MaxValue: 1000
+    Description: >
+      Size of the EBS data volume in GB. Stores job data, results, and certificates.
+      Minimum 20 GB, maximum 1000 GB.
+    ConstraintDescription: Must be a number between 20 and 1000.
+
+  DomainName:
+    Type: String
+    Default: ''
+    Description: >
+      Domain name for HTTPS access (e.g., sedimental.example.com).
+      Leave empty to access via Elastic IP only (self-signed certificate).
+      If provided, you must configure DNS to point to the Elastic IP after deployment.
+    AllowedPattern: ^$|^[a-zA-Z0-9][a-zA-Z0-9\-\.]*[a-zA-Z0-9]$
+    ConstraintDescription: >
+      Must be a valid domain name (e.g., sedimental.example.com) or empty.
+
+  SSHAllowedCIDR:
+    Type: String
+    Default: '0.0.0.0/0'
+    Description: >
+      CIDR range allowed for SSH access (port 22).
+      For security, restrict to your IP address (e.g., 203.0.113.50/32).
+      Use 0.0.0.0/0 to allow SSH from any IP (not recommended for production).
+    AllowedPattern: ^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$
+    ConstraintDescription: Must be a valid CIDR notation (e.g., 192.168.1.0/24 or 0.0.0.0/0).
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: >
+      Name of an existing EC2 key pair for SSH access.
+      You must create this key pair in the AWS Console before deploying.
+    ConstraintDescription: Must be the name of an existing EC2 key pair.
+
+# =============================================================================
+# Metadata - Parameter Groups for Console Display
+# =============================================================================
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Instance Configuration
+        Parameters:
+          - InstanceType
+          - KeyPairName
+      - Label:
+          default: Storage Configuration
+        Parameters:
+          - VolumeSize
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - DomainName
+          - SSHAllowedCIDR
+    ParameterLabels:
+      InstanceType:
+        default: GPU Instance Type
+      VolumeSize:
+        default: Data Volume Size (GB)
+      DomainName:
+        default: Domain Name (optional)
+      SSHAllowedCIDR:
+        default: SSH Allowed IP Range
+      KeyPairName:
+        default: SSH Key Pair
+
+# =============================================================================
+# Outputs
+# =============================================================================
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID (use with start/stop scripts)
+    Value: !Ref SedimentalInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  ElasticIP:
+    Description: Elastic IP address (configure DNS to point here)
+    Value: !Ref SedimentalElasticIP
+    Export:
+      Name: !Sub '${AWS::StackName}-ElasticIP'
+
+  PublicURL:
+    Description: URL to access the Sedimental application
+    Value: !If
+      - HasDomainName
+      - !Sub 'https://${DomainName}'
+      - !Sub 'https://${SedimentalElasticIP}'
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicURL'
+
+  SSHCommand:
+    Description: SSH command to connect to the instance (update key path as needed)
+    Value: !Sub 'ssh -i ~/.ssh/${KeyPairName}.pem ubuntu@${SedimentalElasticIP}'
+
+  VolumeId:
+    Description: EBS Volume ID (persists independently of instance)
+    Value: !Ref SedimentalDataVolume
+    Export:
+      Name: !Sub '${AWS::StackName}-VolumeId'
+
+  ConfigBucketName:
+    Description: S3 bucket name for configuration files (docker-compose.prod.yml, Caddyfile)
+    Value: !Ref SedimentalConfigBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-ConfigBucketName'
+
+# =============================================================================
+# Conditions
+# =============================================================================
+Conditions:
+  HasDomainName: !Not [!Equals [!Ref DomainName, '']]
+
+# =============================================================================
+# Resources
+# =============================================================================
+Resources:
+  # -------------------------------------------------------------------------
+  # S3 Bucket for Configuration Files
+  # -------------------------------------------------------------------------
+  # Stores docker-compose.prod.yml and Caddyfile
+  # Start script uploads these files before starting the instance
+  # User Data script downloads them on boot
+  SedimentalConfigBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-config-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ConfigBucket'
+        - Key: Application
+          Value: Sedimental
+        - Key: Purpose
+          Value: Configuration file storage for docker-compose and Caddyfile
+
+  # -------------------------------------------------------------------------
+  # IAM Role for EC2 Instance
+  # -------------------------------------------------------------------------
+  # Allows EC2 instance to read configuration files from S3
+  SedimentalInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-InstanceRole'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3ConfigReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt SedimentalConfigBucket.Arn
+                  - !Sub '${SedimentalConfigBucket.Arn}/*'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-InstanceRole'
+        - Key: Application
+          Value: Sedimental
+
+  # Instance Profile - Attaches IAM Role to EC2 Instance
+  SedimentalInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${AWS::StackName}-InstanceProfile'
+      Roles:
+        - !Ref SedimentalInstanceRole
+
+  # -------------------------------------------------------------------------
+  # Security Group
+  # -------------------------------------------------------------------------
+  # Security Group - Controls network access to the EC2 instance
+  # Requirements: 4.2, 4.3, 4.4, 4.5, 4.6
+  SedimentalSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Sedimental application - allows HTTPS (443), HTTP (80), and SSH (22)
+      SecurityGroupIngress:
+        # HTTPS access from anywhere (Requirement 4.2)
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '0.0.0.0/0'
+          Description: HTTPS access from anywhere
+        # HTTP access for Let's Encrypt certificate validation and redirect (Requirement 4.3)
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '0.0.0.0/0'
+          Description: HTTP access for certificate validation and HTTPS redirect
+        # SSH access from configurable CIDR range (Requirement 4.4)
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref SSHAllowedCIDR
+          Description: SSH access from allowed IP range
+      # Note: AWS Security Groups allow all outbound traffic by default (Requirement 4.6)
+      # No explicit SecurityGroupEgress needed - default allows all outbound
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-SecurityGroup'
+
+  # Elastic IP - Static public IPv4 address that persists across instance stop/start cycles
+  # Requirements: 4.1
+  # Note: Elastic IPs are free when associated with a running instance, but incur charges
+  # when the instance is stopped. This is expected for the on-demand usage pattern.
+  SedimentalElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ElasticIP'
+        - Key: Application
+          Value: Sedimental
+
+  # EBS Volume - Persistent data storage for jobs, results, and certificates
+  # Requirements: 2.1, 2.2, 2.5
+  # - Attached at consistent mount point /data (handled by User Data script)
+  # - Persists independently of instance lifecycle (DeletionPolicy: Retain)
+  # - Stores SQLite database, uploaded images, processing results, and Caddy certificates
+  # - Configurable size with 50 GB default, minimum 20 GB
+  SedimentalDataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Size: !Ref VolumeSize
+      VolumeType: gp3
+      # gp3 baseline performance: 3,000 IOPS and 125 MB/s throughput (included in price)
+      # Sufficient for SQLite database and image processing workloads
+      Iops: 3000
+      Throughput: 125
+      Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-DataVolume'
+        - Key: Application
+          Value: Sedimental
+        - Key: Purpose
+          Value: Persistent data storage for jobs and certificates
+
+  # EC2 Instance - GPU-enabled instance running the Sedimental application
+  # Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.4, 8.1, 8.2
+  # - g4dn.xlarge instance type with NVIDIA GPU support (Requirement 1.1)
+  # - Ubuntu 22.04 LTS base operating system (Requirement 1.2)
+  # - Docker, Docker Compose, and NVIDIA Container Toolkit installed (Requirement 1.3)
+  # - NVIDIA GPU drivers installed and functional (Requirement 1.4)
+  # - User Data script automatically starts application on boot (Requirement 1.5)
+  # - EBS volume automatically remounted on restart (Requirement 2.4)
+  # - Mounts EBS volume to /data (Requirement 8.1)
+  # - Downloads config files from S3 and starts Docker Compose (Requirement 8.2)
+  SedimentalInstance:
+    Type: AWS::EC2::Instance
+    DependsOn: 
+      - SedimentalDataVolume
+      - SedimentalConfigBucket
+    Properties:
+      InstanceType: !Ref InstanceType
+      KeyName: !Ref KeyPairName
+      # Ubuntu 22.04 LTS AMI - resolved dynamically via SSM Parameter Store
+      # This ensures we always get the latest Ubuntu 22.04 AMI for the region
+      ImageId: !Sub '{{resolve:ssm:/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id}}'
+      AvailabilityZone: !Select [0, !GetAZs '']
+      SecurityGroupIds:
+        - !Ref SedimentalSecurityGroup
+      # IAM Instance Profile for S3 access
+      IamInstanceProfile: !Ref SedimentalInstanceProfile
+      # Block device mapping for root volume
+      # 100 GB provides sufficient space for Docker images, build cache, and system packages
+      # The Docker image with pre-downloaded ML models requires ~30-40 GB during build
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 100
+            VolumeType: gp3
+            DeleteOnTermination: true
+            Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-Instance'
+        - Key: Application
+          Value: Sedimental
+      # User Data script - runs on every boot to configure and start the application
+      # Uses cloud-init to ensure idempotent execution
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          exec > >(tee /var/log/user-data.log|logger -t user-data -s 2>/dev/console) 2>&1
+          
+          echo "=========================================="
+          echo "Sedimental User Data Script Starting"
+          echo "Timestamp: $(date)"
+          echo "=========================================="
+          
+          # Configuration from CloudFormation
+          CONFIG_BUCKET="${SedimentalConfigBucket}"
+          DOMAIN_NAME="${DomainName}"
+          AWS_REGION="${AWS::Region}"
+          
+          # =================================================================
+          # SECTION 1: Install AWS CLI (for S3 access)
+          # =================================================================
+          
+          if ! command -v aws &> /dev/null; then
+              echo "Installing AWS CLI..."
+              apt-get update
+              apt-get install -y awscli
+              echo "AWS CLI installed successfully"
+          else
+              echo "AWS CLI already installed"
+          fi
+          
+          # =================================================================
+          # SECTION 2: Install Docker and NVIDIA Container Toolkit
+          # Requirements: 1.3, 1.4
+          # =================================================================
+          
+          # Check if Docker is already installed (idempotent)
+          if ! command -v docker &> /dev/null; then
+              echo "Installing Docker..."
+              
+              # Update package index
+              apt-get update
+              
+              # Install prerequisites
+              apt-get install -y \
+                  apt-transport-https \
+                  ca-certificates \
+                  curl \
+                  gnupg \
+                  lsb-release
+              
+              # Add Docker's official GPG key
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+              
+              # Set up Docker repository
+              echo \
+                  "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+                  $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+              
+              # Install Docker Engine
+              apt-get update
+              apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+              
+              # Enable and start Docker service
+              systemctl enable docker
+              systemctl start docker
+              
+              # Add ubuntu user to docker group
+              usermod -aG docker ubuntu
+              
+              echo "Docker installed successfully"
+          else
+              echo "Docker already installed, skipping installation"
+          fi
+          
+          # Check if NVIDIA Container Toolkit is already installed (idempotent)
+          if ! dpkg -l | grep -q nvidia-container-toolkit; then
+              echo "Installing NVIDIA Container Toolkit..."
+              
+              # Add NVIDIA Container Toolkit repository
+              curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+              curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+                  sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+                  tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+              
+              # Install NVIDIA Container Toolkit
+              apt-get update
+              apt-get install -y nvidia-container-toolkit
+              
+              # Configure Docker to use NVIDIA runtime
+              nvidia-ctk runtime configure --runtime=docker
+              
+              # Restart Docker to apply NVIDIA runtime configuration
+              systemctl restart docker
+              
+              echo "NVIDIA Container Toolkit installed successfully"
+          else
+              echo "NVIDIA Container Toolkit already installed, skipping installation"
+          fi
+          
+          # Install NVIDIA drivers if not present (for GPU support)
+          # Requirements: 1.4
+          if ! command -v nvidia-smi &> /dev/null; then
+              echo "Installing NVIDIA drivers..."
+              apt-get install -y nvidia-driver-535
+              echo "NVIDIA drivers installed - reboot may be required for first-time setup"
+          else
+              echo "NVIDIA drivers already installed"
+              nvidia-smi || echo "Warning: nvidia-smi failed, GPU may not be ready yet"
+          fi
+          
+          # =================================================================
+          # SECTION 3: Mount EBS Volume to /data
+          # Requirements: 2.4, 8.1
+          # =================================================================
+          
+          echo "Configuring EBS volume mount..."
+          
+          DATA_DIR="/data"
+          
+          # Wait for the EBS volume to be attached
+          # On g4dn instances, /dev/sdf appears as /dev/nvme1n1
+          DEVICE=""
+          for dev in /dev/nvme1n1 /dev/xvdf /dev/sdf; do
+              if [ -b "$dev" ]; then
+                  DEVICE="$dev"
+                  echo "Found EBS volume at $DEVICE"
+                  break
+              fi
+          done
+          
+          if [ -z "$DEVICE" ]; then
+              echo "Waiting for EBS volume to attach..."
+              for i in {1..60}; do
+                  for dev in /dev/nvme1n1 /dev/xvdf /dev/sdf; do
+                      if [ -b "$dev" ]; then
+                          DEVICE="$dev"
+                          echo "Found EBS volume at $DEVICE"
+                          break 2
+                      fi
+                  done
+                  sleep 5
+              done
+          fi
+          
+          if [ -z "$DEVICE" ]; then
+              echo "ERROR: EBS volume not found after waiting. Exiting."
+              exit 1
+          fi
+          
+          # Check if the volume has a filesystem, format if new
+          if ! blkid "$DEVICE" | grep -q ext4; then
+              echo "Formatting new EBS volume with ext4..."
+              mkfs.ext4 -L sedimental-data "$DEVICE"
+          else
+              echo "EBS volume already formatted"
+          fi
+          
+          # Create mount point
+          mkdir -p "$DATA_DIR"
+          
+          # Add to fstab for automatic mounting on reboot (idempotent)
+          if ! grep -q "$DATA_DIR" /etc/fstab; then
+              echo "Adding EBS volume to fstab..."
+              # Use LABEL for reliable mounting across reboots
+              echo "LABEL=sedimental-data $DATA_DIR ext4 defaults,nofail 0 2" >> /etc/fstab
+          fi
+          
+          # Mount the volume if not already mounted
+          if ! mountpoint -q "$DATA_DIR"; then
+              echo "Mounting EBS volume to $DATA_DIR..."
+              mount "$DATA_DIR"
+          else
+              echo "EBS volume already mounted at $DATA_DIR"
+          fi
+          
+          # =================================================================
+          # SECTION 4: Create Directory Structure
+          # Requirements: 8.1
+          # =================================================================
+          
+          echo "Creating directory structure..."
+          
+          mkdir -p "$DATA_DIR/jobs"
+          mkdir -p "$DATA_DIR/input"
+          mkdir -p "$DATA_DIR/output"
+          mkdir -p "$DATA_DIR/temp"
+          mkdir -p "$DATA_DIR/caddy_data"
+          mkdir -p "$DATA_DIR/caddy_config"
+          
+          # Set ownership to ubuntu user
+          chown -R ubuntu:ubuntu "$DATA_DIR"
+          
+          # Make data directories world-writable so Docker container (running as 'sedimental' user) can access them
+          chmod 777 "$DATA_DIR/jobs" "$DATA_DIR/input" "$DATA_DIR/output" "$DATA_DIR/temp"
+          
+          echo "Directory structure created"
+          
+          # =================================================================
+          # SECTION 5: Download Configuration Files from S3
+          # Requirements: 8.2
+          # =================================================================
+          
+          echo "Downloading configuration files from S3..."
+          echo "Bucket: $CONFIG_BUCKET"
+          
+          # Download docker-compose.prod.yml
+          if aws s3 cp "s3://$CONFIG_BUCKET/docker-compose.prod.yml" "$DATA_DIR/docker-compose.prod.yml" --region "$AWS_REGION"; then
+              echo "Downloaded docker-compose.prod.yml from S3"
+          else
+              echo "ERROR: Failed to download docker-compose.prod.yml from S3"
+              echo "Make sure you've run the start script to upload config files first."
+              exit 1
+          fi
+          
+          # Download Caddyfile
+          if aws s3 cp "s3://$CONFIG_BUCKET/Caddyfile" "$DATA_DIR/Caddyfile" --region "$AWS_REGION"; then
+              echo "Downloaded Caddyfile from S3"
+          else
+              echo "ERROR: Failed to download Caddyfile from S3"
+              echo "Make sure you've run the start script to upload config files first."
+              exit 1
+          fi
+          
+          # Substitute domain name placeholder in Caddyfile if domain is configured
+          if [ -n "$DOMAIN_NAME" ] && [ "$DOMAIN_NAME" != "" ]; then
+              echo "Configuring Caddyfile for domain: $DOMAIN_NAME"
+              sed -i "s/{\\$DOMAIN_NAME}/$DOMAIN_NAME/g" "$DATA_DIR/Caddyfile"
+          else
+              echo "No domain configured, using IP-only mode"
+              # Replace domain placeholder with :443 for IP-only access
+              sed -i 's/{$DOMAIN_NAME}/:443/g' "$DATA_DIR/Caddyfile"
+              # Add tls internal directive for self-signed cert
+              sed -i '/:443 {/a\    tls internal' "$DATA_DIR/Caddyfile"
+          fi
+          
+          # Set ownership
+          chown ubuntu:ubuntu "$DATA_DIR/docker-compose.prod.yml"
+          chown ubuntu:ubuntu "$DATA_DIR/Caddyfile"
+          
+          echo "Configuration files ready"
+          
+          # =================================================================
+          # SECTION 6: Build/Pull and Start Docker Compose Services
+          # Requirements: 1.5, 8.2
+          # =================================================================
+          
+          echo "Starting Docker Compose services..."
+          
+          cd "$DATA_DIR"
+          
+          # Check if sedimental image exists locally, if not try to build from source
+          if ! docker image inspect sedimental:latest &> /dev/null; then
+              echo "Sedimental image not found locally"
+              
+              # Check if source code exists (for development/testing)
+              if [ -d "/home/ubuntu/sedimental" ]; then
+                  echo "Building sedimental image from source..."
+                  cd /home/ubuntu/sedimental
+                  docker build -t sedimental:latest .
+                  cd "$DATA_DIR"
+              else
+                  echo "WARNING: sedimental:latest image not found."
+                  echo "Please push the image to this instance or configure a registry."
+                  echo "You can build locally and push with: docker save/load or use a registry."
+              fi
+          fi
+          
+          # Start services with Docker Compose
+          docker compose -f docker-compose.prod.yml up -d
+          
+          echo "Docker Compose services started"
+          
+          # =================================================================
+          # SECTION 7: Final Status Check
+          # =================================================================
+          
+          echo "=========================================="
+          echo "Sedimental User Data Script Complete"
+          echo "Timestamp: $(date)"
+          echo "=========================================="
+          
+          # Display service status
+          docker compose -f "$DATA_DIR/docker-compose.prod.yml" ps
+          
+          # Check GPU availability
+          echo ""
+          echo "GPU Status:"
+          nvidia-smi || echo "GPU not yet available (may require reboot on first install)"
+          
+          echo ""
+          echo "Application should be accessible at:"
+          if [ -n "$DOMAIN_NAME" ] && [ "$DOMAIN_NAME" != "" ]; then
+              echo "  https://$DOMAIN_NAME"
+          else
+              echo "  https://<elastic-ip> (with self-signed certificate warning)"
+          fi
+          echo ""
+          echo "Health check endpoint: /health"
+
+  # Elastic IP Association - Links the Elastic IP to the EC2 instance
+  # The Elastic IP persists across instance stop/start cycles (Requirement 4.1)
+  # When the instance is stopped and restarted, it retains the same public IP address
+  SedimentalEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      InstanceId: !Ref SedimentalInstance
+      AllocationId: !GetAtt SedimentalElasticIP.AllocationId
+
+  # Volume Attachment - Attaches EBS volume to EC2 instance at /dev/sdf
+  # The User Data script will mount this device to /data
+  # Note: On Ubuntu, /dev/sdf may appear as /dev/xvdf or /dev/nvme1n1 depending on instance type
+  SedimentalVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/sdf
+      InstanceId: !Ref SedimentalInstance
+      VolumeId: !Ref SedimentalDataVolume

@@ -1,0 +1,120 @@
+# =============================================================================
+# Sedimental Analysis Tool - Production Docker Compose Configuration
+# =============================================================================
+# Production configuration for AWS EC2 GPU deployment with Caddy reverse proxy.
+# This file is uploaded to S3 by the start script and downloaded by the EC2
+# instance on boot via the User Data script.
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Caddy - Reverse Proxy with Automatic HTTPS
+  # ---------------------------------------------------------------------------
+  # Handles TLS termination, automatic Let's Encrypt certificates, and
+  # proxies requests to the Sedimental application.
+  # ---------------------------------------------------------------------------
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"     # HTTP (for certificate validation and redirect)
+      - "443:443"   # HTTPS
+    volumes:
+      # Caddyfile configuration (downloaded from S3 on boot)
+      - /data/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persistent storage for certificates and Caddy state
+      - /data/caddy_data:/data
+      - /data/caddy_config:/config
+    depends_on:
+      - sedimental
+    networks:
+      - sedimental-network
+
+  # ---------------------------------------------------------------------------
+  # Sedimental - Sediment Grain Analysis Application
+  # ---------------------------------------------------------------------------
+  # FastAPI web server with GPU-accelerated image processing.
+  # Only accessible internally via Caddy reverse proxy.
+  # ---------------------------------------------------------------------------
+  sedimental:
+    image: sedimental:latest
+    container_name: sedimental
+    restart: unless-stopped
+    
+    # Internal port only - not exposed to host, accessed via Caddy
+    expose:
+      - "8080"
+    
+    # Volume mounts for persistent storage on EBS
+    volumes:
+      # Input directory for CLI processing
+      - /data/input:/data/input:ro
+      # Output directory for results and masks
+      - /data/output:/data/output
+      # Temp directory for intermediate processing files
+      - /data/temp:/data/temp
+      # Jobs directory for web interface (SQLite + job files)
+      - /data/jobs:/data/jobs
+      # Persist Maven/ImageJ2 JARs to avoid re-downloading
+      - imagej2_cache:/home/sedimental/.m2
+    
+    # Environment variables for production
+    environment:
+      # Logging configuration
+      - SEDIMENTAL_LOG_LEVEL=INFO
+      - SEDIMENTAL_LOG_FILE=/data/output/sedimental.log
+      
+      # Processing configuration
+      - SEDIMENTAL_MAX_WORKERS=4
+      - SEDIMENTAL_PARALLEL=false
+      
+      # Web server configuration (internal, proxied by Caddy)
+      - SEDIMENTAL_WEB_HOST=0.0.0.0
+      - SEDIMENTAL_WEB_PORT=8080
+      
+      # PyImageJ/ImageJ2 configuration
+      - JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+      - PYIMAGEJ_HEADLESS=1
+      
+      # Napari headless mode
+      - NAPARI_HEADLESS=1
+      - QT_QPA_PLATFORM=offscreen
+      - DISPLAY=:0
+      
+      # GPU configuration - enable CUDA acceleration
+      - SEDIMENTAL_USE_GPU=true
+    
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    
+    # GPU resource reservations for NVIDIA GPU access
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    networks:
+      - sedimental-network
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  sedimental-network:
+    driver: bridge
+
+# =============================================================================
+# Named Volumes
+# =============================================================================
+volumes:
+  # Persists Maven/ImageJ2 JARs across container restarts
+  imagej2_cache:

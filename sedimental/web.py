@@ -137,13 +137,42 @@ def _run_job(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Option
             progress_callback=_on_progress,
         )
 
-        _update_job(
-            job_id,
-            status="completed",
-            result_path=str(result_csv),
-            progress_current=batch.successful,
-            progress_total=batch.total_images,
-        )
+        # Determine final status based on results
+        if batch.successful == 0 and batch.total_images > 0:
+            # All images failed - mark job as failed with error details
+            error_details = "; ".join(
+                f"{fname}: {err}" for fname, err in batch.errors.items()
+            )
+            _update_job(
+                job_id,
+                status="failed",
+                result_path=str(result_csv) if result_csv.exists() else None,
+                progress_current=batch.successful,
+                progress_total=batch.total_images,
+                error_message=f"All images failed to process: {error_details}",
+            )
+        elif batch.failed > 0:
+            # Partial failure - mark as completed but include error info
+            error_details = "; ".join(
+                f"{fname}: {err}" for fname, err in batch.errors.items()
+            )
+            _update_job(
+                job_id,
+                status="completed",
+                result_path=str(result_csv),
+                progress_current=batch.successful,
+                progress_total=batch.total_images,
+                error_message=f"Partial failure ({batch.failed}/{batch.total_images} failed): {error_details}",
+            )
+        else:
+            # Full success
+            _update_job(
+                job_id,
+                status="completed",
+                result_path=str(result_csv),
+                progress_current=batch.successful,
+                progress_total=batch.total_images,
+            )
     except Exception as exc:
         logger.exception("Job %s failed: %s", job_id, exc)
         _update_job(job_id, status="failed", error_message=str(exc))
@@ -357,12 +386,15 @@ def create_app() -> "FastAPI":
         default_meta: dict = {}
         if sample_id is not None:
             default_meta["sample_id"] = sample_id
-        if location_lat is not None or location_lon is not None:
-            default_meta["location"] = {
-                k: v for k, v in [("lat", location_lat), ("lon", location_lon)] if v is not None
-            }
-        if location_description is not None:
-            default_meta["location_description"] = location_description
+        if location_lat is not None or location_lon is not None or location_description is not None:
+            loc_dict: dict = {}
+            if location_lat is not None:
+                loc_dict["lat"] = location_lat
+            if location_lon is not None:
+                loc_dict["lon"] = location_lon
+            if location_description is not None:
+                loc_dict["description"] = location_description
+            default_meta["location"] = loc_dict
         if capture_date is not None:
             default_meta["capture_date"] = capture_date
         if scale_ppm is not None:

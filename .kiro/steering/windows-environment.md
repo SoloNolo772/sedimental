@@ -11,3 +11,9 @@ This project runs on Windows with PowerShell as the shell environment.
   - Instead of `ls` → use `listDirectory` tool
   - Instead of `cat file` → use `readFile` tool
 - When running shell commands via `executePwsh`, always use PowerShell-compatible syntax.
+
+## fsWrite Tool Requirements
+
+- The `fsWrite` tool requires the `text` parameter to contain **non-empty content**.
+- Empty strings (`""`) will fail with the error: "Either the text arg was not provided or text content provided exceeded the write file limit."
+- When creating placeholder files (like `.gitkeep`), always include at least a comment or single character of content.

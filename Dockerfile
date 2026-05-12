@@ -68,6 +68,22 @@ RUN mkdir -p /app /data/input /data/output /data/temp /data/jobs
 # Placed BEFORE copying app code so code changes don't bust this slow cache layer.
 RUN python -c "import imagej; ij = imagej.init(); print('ImageJ2 initialized:', ij.getVersion())" || true
 
+# Pre-download Cellpose models to avoid runtime downloads from HuggingFace.
+# Downloads cyto2 (default) and nuclei models which are commonly used.
+# The models are cached in ~/.cellpose/models/ for the root user during build,
+# then we'll copy them to the sedimental user's home after user creation.
+RUN mkdir -p /root/.cellpose/models && \
+    python -c "\
+from cellpose import models; \
+print('Downloading cyto2 model...'); \
+m1 = models.CellposeModel(gpu=False, pretrained_model='cyto2'); \
+print('cyto2 model ready'); \
+print('Downloading nuclei model...'); \
+m2 = models.CellposeModel(gpu=False, pretrained_model='nuclei'); \
+print('nuclei model ready'); \
+" && \
+    echo "Cellpose models downloaded successfully"
+
 # Set working directory
 WORKDIR /app
 
@@ -81,6 +97,11 @@ RUN chmod +x /app/entrypoint.sh
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash sedimental \
     && chown -R sedimental:sedimental /app /data
+
+# Copy pre-downloaded Cellpose models to sedimental user's home
+RUN mkdir -p /home/sedimental/.cellpose && \
+    cp -r /root/.cellpose/models /home/sedimental/.cellpose/ && \
+    chown -R sedimental:sedimental /home/sedimental/.cellpose
 
 USER sedimental
 

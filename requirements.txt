@@ -4,14 +4,16 @@
 
 # Core image processing
 Pillow>=10.0.0
-numpy>=1.24.0
+numpy>=1.24.0,<2.0
 scikit-image>=0.21.0
 tifffile>=2023.7.0
 
 # PyTorch with CUDA 12.1 support (required for Cellpose GPU acceleration)
-# Install before imagegrains so Cellpose picks up the GPU-enabled torch build
+# Pin to 2.1.2 which is the last version compiled for CUDA 12.1
+# Later versions require CUDA 12.4+ or 13.0
 --extra-index-url https://download.pytorch.org/whl/cu121
-torch>=2.1.0
+torch==2.1.2+cu121
+torchvision==0.16.2+cu121
 
 # ImageGrains for grain segmentation
 # Source: https://github.com/dmair1989/imagegrains
