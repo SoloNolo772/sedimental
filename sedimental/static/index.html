@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sedimental – Grain Analysis</title>
+  <link rel="icon" type="image/png" href="/static/favicon.png">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f5f5f5; color: #222; padding: 2rem; }
@@ -39,6 +40,109 @@
     #results-section a:hover { text-decoration: underline; }
     #masks-list { list-style: none; margin-top: .5rem; }
     #masks-list li a { display: block; font-size: .875rem; }
+
+    /* Spinner removal for coordinate inputs */
+    .no-spinner::-webkit-outer-spin-button,
+    .no-spinner::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .no-spinner {
+      -moz-appearance: textfield; /* Firefox */
+    }
+
+    /* Footer styling */
+    .site-footer {
+      max-width: 640px;
+      margin: 2rem auto 0;
+      padding: 1rem 0;
+      text-align: center;
+      font-size: 0.8rem;
+      color: #666;
+    }
+
+    .site-footer a {
+      color: #2563eb;
+      text-decoration: none;
+    }
+
+    .site-footer a:hover {
+      text-decoration: underline;
+    }
+
+    .data-notice {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      color: #92400e;
+      font-size: 0.8rem;
+    }
+
+    .acknowledgements {
+      margin-bottom: 0.5rem;
+    }
+
+    .copyright {
+      margin-bottom: 0.25rem;
+    }
+
+    .contact {
+      margin-bottom: 0;
+    }
+
+    .privacy-link {
+      background: none;
+      border: none;
+      padding: 0;
+      color: #2563eb;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+      margin-top: 0.25rem;
+      display: inline-block;
+    }
+
+    .privacy-link:hover {
+      text-decoration: underline;
+    }
+
+    /* Privacy modal */
+    dialog.privacy-modal {
+      max-width: 640px;
+      width: 100%;
+      padding: 1.5rem;
+      border: none;
+      border-radius: 8px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.2);
+    }
+
+    dialog::backdrop {
+      background: rgba(0,0,0,0.5);
+    }
+
+    .modal-header {
+      display: flex;
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.5rem;
+      line-height: 1;
+      color: #555;
+      padding: 0;
+    }
+
+    .modal-close:hover {
+      color: #222;
+    }
   </style>
 </head>
 <body>
@@ -56,10 +160,10 @@
       <label>Location</label>
       <div class="row">
         <div>
-          <input type="number" id="location_lat" name="location_lat" placeholder="Latitude" step="any" min="-90" max="90" />
+          <input type="number" id="location_lat" name="location_lat" placeholder="Latitude (e.g., 40.7128)" step="any" min="-90" max="90" class="no-spinner" />
         </div>
         <div>
-          <input type="number" id="location_lon" name="location_lon" placeholder="Longitude" step="any" min="-180" max="180" />
+          <input type="number" id="location_lon" name="location_lon" placeholder="Longitude (e.g., -74.0060)" step="any" min="-180" max="180" class="no-spinner" />
         </div>
       </div>
 
@@ -96,6 +200,46 @@
       <ul id="masks-list"></ul>
     </div>
   </div>
+
+  <footer class="site-footer">
+    <div class="footer-content">
+      <p class="data-notice">
+        All uploaded data and analysis results belong to you. Data may be deleted from this site at any time without notice. Please download your results immediately after processing.
+      </p>
+      <p class="acknowledgements">
+        Powered by <a href="https://github.com/imagej/ImageJ" target="_blank" rel="noopener">ImageJ</a>
+        and <a href="https://github.com/dmair1989/imagegrains" target="_blank" rel="noopener">ImageGrains</a>
+      </p>
+      <p class="copyright">© 2026 Nolan Powers. All rights reserved.</p>
+      <p class="contact">
+        <a href="mailto:npowers@umw.edu" aria-label="Contact Nolan Powers at sedimental.io">Nolan Powers – sedimental.io</a>
+      </p>
+      <button id="privacy-link" class="privacy-link">Privacy</button>
+    </div>
+  </footer>
+
+  <dialog id="privacy-modal" class="privacy-modal">
+    <div class="modal-header">
+      <h2>Privacy Statement</h2>
+      <button class="modal-close" aria-label="Close privacy statement">×</button>
+    </div>
+    <div class="modal-body">
+      <p><strong>Data collected</strong></p>
+      <p>When you submit an analysis job, we process the images you upload and any metadata you provide (sample ID, location, date, scale). Our server also records standard access logs containing your IP address, the request path, and a timestamp.</p>
+
+      <p style="margin-top:0.75rem"><strong>Legal basis</strong></p>
+      <p>We process your data solely to perform the grain analysis service you requested. No other processing takes place.</p>
+
+      <p style="margin-top:0.75rem"><strong>Third-party sharing</strong></p>
+      <p>Your data is not shared with any third parties.</p>
+
+      <p style="margin-top:0.75rem"><strong>Retention</strong></p>
+      <p>Uploaded images and results are stored temporarily and may be deleted at any time without notice. No minimum retention period is guaranteed. Please download your results immediately after processing.</p>
+
+      <p style="margin-top:0.75rem"><strong>Your rights</strong></p>
+      <p>To request access to or deletion of your data, contact <a href="mailto:npowers@umw.edu">npowers@umw.edu</a>.</p>
+    </div>
+  </dialog>
 
   <script>
     const form = document.getElementById('upload-form');
@@ -178,6 +322,24 @@
       submitBtn.disabled = false;
       submitBtn.textContent = 'Analyse Images';
     }
+
+    // Privacy modal handlers
+    const privacyLink = document.getElementById('privacy-link');
+    const privacyModal = document.getElementById('privacy-modal');
+    const modalClose = privacyModal.querySelector('.modal-close');
+
+    privacyLink.addEventListener('click', () => {
+      privacyModal.showModal();
+    });
+
+    modalClose.addEventListener('click', () => {
+      privacyModal.close();
+    });
+
+    // Return focus to the Privacy button when the dialog closes (Req 11.11)
+    privacyModal.addEventListener('close', () => {
+      privacyLink.focus();
+    });
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();

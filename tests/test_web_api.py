@@ -396,3 +396,28 @@ class TestFileUploadValidation:
         )
         assert resp.status_code == 400
         assert "huge.jpg" in resp.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Static file serving (favicon)
+# ---------------------------------------------------------------------------
+
+class TestFaviconServing:
+    """Tests for favicon static file serving (Requirement 6.4)."""
+
+    def test_favicon_returns_200(self, client):
+        """GET /static/favicon.png should return HTTP 200.
+        
+        **Validates: Requirement 6.4**
+        """
+        resp = client.get("/static/favicon.png")
+        assert resp.status_code == 200
+
+    def test_favicon_content_type_is_png(self, client):
+        """GET /static/favicon.png should return content-type image/png.
+        
+        **Validates: Requirement 6.4**
+        """
+        resp = client.get("/static/favicon.png")
+        assert resp.status_code == 200
+        assert "image/png" in resp.headers["content-type"]
