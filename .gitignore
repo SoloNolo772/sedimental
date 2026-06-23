@@ -2,5 +2,7 @@
 secret_aws_keys.txt
 *.pem
 
+datasets/
+
 # Deployment configuration (contains instance-specific values)
 deploy/scripts/config.env
