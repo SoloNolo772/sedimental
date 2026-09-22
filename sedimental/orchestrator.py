@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from .csv_writer import CSVWriter
+from .csv_writer import CSVWriter, write_overlap_analysis_csv
 from .errors import SedimentalError
 from .loader import ImageLoader
 from .measurement import MeasurementEngine
@@ -23,6 +23,7 @@ from .models import (
     ProcessingResult,
     SampleMetadata,
 )
+from .overlap_filter import OverlapGrainFilter
 from .segmentation import SegmentationEngine
 
 logger = logging.getLogger("sedimental.orchestrator")
@@ -41,6 +42,7 @@ class ProcessingOrchestrator:
         self._loader = ImageLoader()
         self._seg_engine: Optional[SegmentationEngine] = None
         self._meas_engine: Optional[MeasurementEngine] = None
+        self._overlap_filter: Optional[OverlapGrainFilter] = None
         self._csv_writer = CSVWriter()
         self._metadata_parser = MetadataParser()
 
@@ -74,6 +76,12 @@ class ProcessingOrchestrator:
             self._meas_engine = MeasurementEngine()
         return self._meas_engine
 
+    @property
+    def overlap_filter(self) -> OverlapGrainFilter:
+        if self._overlap_filter is None:
+            self._overlap_filter = OverlapGrainFilter()
+        return self._overlap_filter
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -84,6 +92,7 @@ class ProcessingOrchestrator:
         metadata: Optional[SampleMetadata] = None,
         save_mask: bool = False,
         output_dir: Optional[Path] = None,
+        remove_overlaps: bool = False,
     ) -> ProcessingResult:
         """Process a single image and return measurements.
 
@@ -94,6 +103,13 @@ class ProcessingOrchestrator:
             save_mask: Whether to save the segmentation mask as a TIFF.
             output_dir: Directory for mask output (required when
                         save_mask=True). Defaults to image_path.parent.
+            remove_overlaps: When True, run the overlap filter on the
+                        segmentation mask before measurement so
+                        partially-covered grains are excluded from the
+                        CSV output. When ``save_mask`` is also True, the
+                        filtered mask is what gets saved and an
+                        additional ``*_overlap_analysis.csv`` file is
+                        written next to the mask.
 
         Returns:
             ProcessingResult with success=True and an ImageResult on
@@ -112,31 +128,93 @@ class ProcessingOrchestrator:
             # 2. Segment grains
             seg_result = self.seg_engine.segment(image, filename=filename)
 
-            # 3. Measure grains
+            # 3. Optionally filter overlapping grains
+            measurement_mask = seg_result.mask
+            overlap_result = None
+            if remove_overlaps:
+                overlap_result = self.overlap_filter.filter(
+                    seg_result.mask, filename=filename
+                )
+                measurement_mask = overlap_result.filtered_mask
+
+            # 4. Measure grains (on the filtered mask when applicable)
             measurements = self.meas_engine.measure(
-                seg_result.mask,
+                measurement_mask,
                 scale_ppm=meta.scale_ppm,
                 filename=filename,
             )
 
-            # 4. Optionally save mask
+            # 5. Optionally persist mask(s) and overlap analysis CSV.
             mask_path: Optional[Path] = None
+            filtered_mask_path: Optional[Path] = None
+            analysis_path: Optional[Path] = None
             if save_mask:
                 dest_dir = Path(output_dir) if output_dir else image_path.parent
                 mask_path = dest_dir / (image_path.stem + "_mask.tiff")
-                self.seg_engine.save_mask(seg_result.mask, mask_path)
+                # If we filtered, the primary mask file is the cleaned mask.
+                # The unfiltered mask is saved alongside with an "_original"
+                # suffix so both are available for review.
+                if overlap_result is not None:
+                    filtered_mask_path = mask_path
+                    original_mask_path = dest_dir / (
+                        image_path.stem + "_mask_original.tiff"
+                    )
+                    self.seg_engine.save_mask(seg_result.mask, original_mask_path)
+                    self.seg_engine.save_mask(
+                        overlap_result.filtered_mask, filtered_mask_path
+                    )
+                    analysis_path = dest_dir / (
+                        image_path.stem + "_overlap_analysis.csv"
+                    )
+                    write_overlap_analysis_csv(
+                        overlap_result.pair_records, analysis_path
+                    )
+                else:
+                    self.seg_engine.save_mask(seg_result.mask, mask_path)
+
+            warnings = list(seg_result.warnings)
+            if overlap_result is not None and overlap_result.removed_ids:
+                warnings.append(
+                    f"Overlap filter removed {len(overlap_result.removed_ids)} "
+                    f"of {overlap_result.original_grain_count} grain(s)"
+                )
 
             image_result = ImageResult(
                 source_file=filename,
                 metadata=meta,
                 measurements=measurements,
                 segmentation_mask_path=mask_path,
-                warnings=seg_result.warnings,
+                warnings=warnings,
+                overlap_filter_applied=overlap_result is not None,
+                original_grain_count=(
+                    overlap_result.original_grain_count
+                    if overlap_result is not None
+                    else None
+                ),
+                removed_overlap_ids=(
+                    list(overlap_result.removed_ids)
+                    if overlap_result is not None
+                    else []
+                ),
+                filtered_mask_path=filtered_mask_path,
+                overlap_analysis_path=analysis_path,
             )
 
-            logger.info(
-                "Finished '%s': %d grain(s) measured", filename, len(measurements)
-            )
+            if overlap_result is not None:
+                logger.info(
+                    "Finished '%s': %d grain(s) measured "
+                    "(%d overlap grain(s) removed from %d)",
+                    filename,
+                    len(measurements),
+                    len(overlap_result.removed_ids),
+                    overlap_result.original_grain_count,
+                )
+            else:
+                logger.info(
+                    "Finished '%s': %d grain(s) measured",
+                    filename,
+                    len(measurements),
+                )
             return ProcessingResult(success=True, image_result=image_result)
 
         except SedimentalError as exc:
@@ -155,6 +233,7 @@ class ProcessingOrchestrator:
         parallel: bool = False,
         max_workers: int = 4,
         progress_callback=None,
+        remove_overlaps: bool = False,
     ) -> BatchResult:
         """Process all JPEGs in a directory and write a single CSV.
 
@@ -216,6 +295,7 @@ class ProcessingOrchestrator:
                 metadata=meta,
                 save_mask=save_masks,
                 output_dir=mask_dir,
+                remove_overlaps=remove_overlaps,
             )
             return image_path, result
 

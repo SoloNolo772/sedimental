@@ -148,6 +148,45 @@ class TestCreateJob:
         data = resp.json()
         assert data["status"] == "pending"
 
+    def test_create_job_remove_overlaps_true(self, client, tmp_jobs_dir):
+        """Setting remove_overlaps=true persists the flag on the job row."""
+        jpeg = _make_jpeg_bytes()
+        resp = client.post(
+            "/api/jobs",
+            files=[("files", ("sample.jpg", jpeg, "image/jpeg"))],
+            data={"remove_overlaps": "true"},
+        )
+        assert resp.status_code == 201
+        assert resp.json()["remove_overlaps"] is True
+
+        job_id = resp.json()["job_id"]
+        conn = sqlite3.connect(str(tmp_jobs_dir / "jobs.db"))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        conn.close()
+        assert row["remove_overlaps"] == 1
+
+    def test_create_job_remove_overlaps_default_false(self, client):
+        """remove_overlaps defaults to False when not provided."""
+        jpeg = _make_jpeg_bytes()
+        resp = client.post(
+            "/api/jobs",
+            files=[("files", ("sample.jpg", jpeg, "image/jpeg"))],
+        )
+        assert resp.json()["remove_overlaps"] is False
+
+    def test_get_job_status_reports_remove_overlaps(self, client):
+        """GET /api/jobs/{id} echoes back the remove_overlaps flag."""
+        jpeg = _make_jpeg_bytes()
+        create = client.post(
+            "/api/jobs",
+            files=[("files", ("sample.jpg", jpeg, "image/jpeg"))],
+            data={"remove_overlaps": "true"},
+        )
+        job_id = create.json()["job_id"]
+        status = client.get(f"/api/jobs/{job_id}").json()
+        assert status["remove_overlaps"] is True
+
     def test_create_job_files_saved_to_disk(self, client, tmp_jobs_dir):
         jpeg = _make_jpeg_bytes()
         resp = client.post(
@@ -296,6 +335,15 @@ class TestDownloadMask:
         resp = client.get(f"/api/jobs/{job_id}/masks/sample_mask.tiff")
         assert resp.status_code == 200
         assert "tiff" in resp.headers["content-type"]
+
+    def test_download_overlap_analysis_csv(self, client, tmp_jobs_dir):
+        """The masks endpoint serves *_overlap_analysis.csv as text/csv."""
+        job_id = self._seed_completed_job_with_mask(
+            tmp_jobs_dir, mask_filename="sample_overlap_analysis.csv"
+        )
+        resp = client.get(f"/api/jobs/{job_id}/masks/sample_overlap_analysis.csv")
+        assert resp.status_code == 200
+        assert "csv" in resp.headers["content-type"]
 
     def test_download_mask_404_unknown_job(self, client):
         resp = client.get("/api/jobs/no-such-job/masks/foo.tiff")

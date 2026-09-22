@@ -9,7 +9,7 @@ import csv
 import logging
 from datetime import date
 from pathlib import Path
-from typing import List, Optional
+from typing import Iterable, List, Optional, TYPE_CHECKING
 
 from .errors import OutputError
 from .models import (
@@ -18,6 +18,9 @@ from .models import (
     MeasurementUnit,
     SampleMetadata,
 )
+
+if TYPE_CHECKING:
+    from .overlap_filter import OverlapPairRecord
 
 logger = logging.getLogger("sedimental.output")
 
@@ -209,3 +212,65 @@ class CSVWriter:
             unit=unit,
             scale_factor=scale_factor,
         )
+
+
+# ---------------------------------------------------------------------------
+# Overlap-filter analysis CSV
+# ---------------------------------------------------------------------------
+
+OVERLAP_ANALYSIS_COLUMNS = [
+    "grain_A",
+    "grain_B",
+    "concavity_A",
+    "concavity_B",
+    "solidity_A",
+    "solidity_B",
+    "votes_A",
+    "votes_B",
+    "removed_grain",
+    "reason",
+]
+
+
+def write_overlap_analysis_csv(
+    pair_records: "Iterable[OverlapPairRecord]",
+    output_path: Path,
+) -> None:
+    """Write per-pair overlap-filter records to a CSV file.
+
+    The column layout matches the standalone ``OverlapGrainEliminator.py``
+    output so existing tooling that consumes those CSVs keeps working.
+
+    Args:
+        pair_records: Iterable of :class:`OverlapPairRecord` from the
+            overlap filter.
+        output_path: Destination CSV path. Parent directories are
+            created as needed.
+    """
+    output_path = Path(output_path)
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", newline="", encoding="utf-8") as fh:
+            writer = csv.DictWriter(fh, fieldnames=OVERLAP_ANALYSIS_COLUMNS)
+            writer.writeheader()
+            for record in pair_records:
+                writer.writerow({
+                    "grain_A": record.grain_a,
+                    "grain_B": record.grain_b,
+                    "concavity_A": record.concavity_a,
+                    "concavity_B": record.concavity_b,
+                    "solidity_A": record.solidity_a,
+                    "solidity_B": record.solidity_b,
+                    "votes_A": record.votes_a,
+                    "votes_B": record.votes_b,
+                    "removed_grain": (
+                        record.removed_grain if record.removed_grain is not None else ""
+                    ),
+                    "reason": record.reason,
+                })
+    except OSError as exc:
+        raise OutputError(
+            f"Failed to write overlap analysis CSV to '{output_path}': {exc}"
+        ) from exc
+
+    logger.info("Wrote overlap analysis CSV to '%s'", output_path)

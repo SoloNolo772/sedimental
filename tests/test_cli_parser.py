@@ -40,6 +40,7 @@ def parse(argv):
     process_parser.add_argument('-o', '--output', help='Output CSV path', default='results.csv')
     process_parser.add_argument('--metadata', help='Metadata JSON file path')
     process_parser.add_argument('--save-masks', action='store_true')
+    process_parser.add_argument('--remove-overlaps', action='store_true')
     process_parser.add_argument('--scale', type=float)
     process_parser.add_argument('-v', '--verbose', action='store_true')
 
@@ -100,6 +101,16 @@ class TestProcessSubcommand:
         args = parse(['process', 'img.jpg'])
         assert args.save_masks is False
 
+    def test_remove_overlaps_flag(self):
+        """--remove-overlaps sets flag to True."""
+        args = parse(['process', 'img.jpg', '--remove-overlaps'])
+        assert args.remove_overlaps is True
+
+    def test_remove_overlaps_default_false(self):
+        """remove_overlaps defaults to False."""
+        args = parse(['process', 'img.jpg'])
+        assert args.remove_overlaps is False
+
     def test_scale_argument(self):
         """Req 6.5 - --scale accepts a float value."""
         args = parse(['process', 'img.jpg', '--scale', '25.4'])
@@ -137,6 +148,7 @@ class TestProcessSubcommand:
             '-o', 'out.csv',
             '--metadata', 'meta.json',
             '--save-masks',
+            '--remove-overlaps',
             '--scale', '50.0',
             '--verbose',
         ])
@@ -144,6 +156,7 @@ class TestProcessSubcommand:
         assert args.output == 'out.csv'
         assert args.metadata == 'meta.json'
         assert args.save_masks is True
+        assert args.remove_overlaps is True
         assert args.scale == pytest.approx(50.0)
         assert args.verbose is True
 
@@ -225,7 +238,8 @@ class TestRunDockerProcess:
     """Tests for run_docker_process() Docker command construction."""
 
     def _make_args(self, input_path, output='results.csv', metadata=None,
-                   save_masks=False, scale=None, verbose=False):
+                   save_masks=False, scale=None, verbose=False,
+                   remove_overlaps=False):
         import argparse
         args = argparse.Namespace(
             input=str(input_path),
@@ -234,6 +248,7 @@ class TestRunDockerProcess:
             save_masks=save_masks,
             scale=scale,
             verbose=verbose,
+            remove_overlaps=remove_overlaps,
         )
         return args
 
@@ -307,6 +322,39 @@ class TestRunDockerProcess:
 
         called_cmd = mock_run.call_args[0][0]
         assert '--save-masks' in called_cmd
+
+    def test_process_passes_remove_overlaps_flag(self, tmp_path):
+        """run_docker_process() forwards --remove-overlaps to the container."""
+        from unittest.mock import patch, MagicMock
+        from sedimental.cli import run_docker_process
+
+        img = tmp_path / "sample.jpg"
+        img.touch()
+        args = self._make_args(img, output=str(tmp_path / "out.csv"),
+                               remove_overlaps=True)
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            run_docker_process(args)
+
+        called_cmd = mock_run.call_args[0][0]
+        assert '--remove-overlaps' in called_cmd
+
+    def test_process_no_remove_overlaps_flag_by_default(self, tmp_path):
+        """run_docker_process() omits --remove-overlaps when not set."""
+        from unittest.mock import patch, MagicMock
+        from sedimental.cli import run_docker_process
+
+        img = tmp_path / "sample.jpg"
+        img.touch()
+        args = self._make_args(img, output=str(tmp_path / "out.csv"))
+
+        with patch('subprocess.run') as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            run_docker_process(args)
+
+        called_cmd = mock_run.call_args[0][0]
+        assert '--remove-overlaps' not in called_cmd
 
     def test_process_passes_scale_flag(self, tmp_path):
         """run_docker_process() forwards --scale to the container."""

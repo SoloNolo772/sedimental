@@ -58,6 +58,9 @@ docker compose run --rm sedimental process /data/input -o /data/output/results.c
 # With segmentation masks saved as TIFF files
 docker compose run --rm sedimental process /data/input -o /data/output/results.csv --save-masks
 
+# Filter out partially-covered (overlapping) grains before measurement
+docker compose run --rm sedimental process /data/input -o /data/output/results.csv --remove-overlaps
+
 # With scale calibration (pixels per millimeter)
 docker compose run --rm sedimental process /data/input -o /data/output/results.csv --scale 4.5
 
@@ -72,6 +75,31 @@ docker compose run --rm sedimental process /data/input -o /data/output/results.c
 | CSV results | `data/output/results.csv` |
 | TIFF masks | `data/output/masks/` |
 | Log file | `data/output/sedimental.log` |
+
+---
+
+## Overlap filter (removing partially-covered grains)
+
+Grains that lie underneath other grains in the image get their real
+outline hidden, so their measurements are unreliable. The overlap
+filter looks at each segmented grain's shape (solidity and normalized
+convexity defects), compares each pair of touching grains, and drops
+grains that show two or more independent signs of being occluded.
+
+Enable it with `--remove-overlaps` on the CLI or the *Filter out
+overlapping grains* checkbox in the web UI. When it runs:
+
+- Only the surviving grains appear in `results.csv`.
+- Grain labels are preserved, so an id in `results.csv` still matches
+  the same object in the segmentation mask.
+- With `--save-masks` (or the corresponding web-UI checkbox) you also
+  get:
+
+    | File | What it is |
+    |------|------------|
+    | `<image>_mask.tiff` | Filtered mask (the one the CSV was measured on) |
+    | `<image>_mask_original.tiff` | Raw segmentation mask before filtering |
+    | `<image>_overlap_analysis.csv` | Per-pair analysis: votes and reasons |
 
 ---
 

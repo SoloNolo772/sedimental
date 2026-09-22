@@ -78,6 +78,12 @@ class ImageResult:
     measurements: List[GrainMeasurement]
     segmentation_mask_path: Optional[Path] = None
     warnings: List[str] = field(default_factory=list)
+    # Overlap-filter fields (populated only when the filter runs).
+    overlap_filter_applied: bool = False
+    original_grain_count: Optional[int] = None
+    removed_overlap_ids: List[int] = field(default_factory=list)
+    filtered_mask_path: Optional[Path] = None
+    overlap_analysis_path: Optional[Path] = None
 
 
 @dataclass

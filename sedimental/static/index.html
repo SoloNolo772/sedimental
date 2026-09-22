@@ -184,6 +184,16 @@
         <label for="save_masks" style="margin:0">Save segmentation masks (TIFF)</label>
       </div>
 
+      <div class="checkbox-row">
+        <input type="checkbox" id="remove_overlaps" name="remove_overlaps" value="true" />
+        <label for="remove_overlaps" style="margin:0">
+          Filter out overlapping grains
+          <span style="font-weight:400;color:#666;font-size:.8rem">
+            (excludes partially-covered grains from the CSV)
+          </span>
+        </label>
+      </div>
+
       <button type="submit" id="submit-btn">Analyse Images</button>
     </form>
 
@@ -285,7 +295,7 @@
 
         if (data.status === 'completed') {
           clearInterval(pollTimer);
-          showResults(jobId, data.save_masks, data.files);
+          showResults(jobId, data.save_masks, data.files, data.remove_overlaps);
         } else if (data.status === 'failed') {
           clearInterval(pollTimer);
           showError(data.error_message || 'Processing failed.');
@@ -298,7 +308,7 @@
       }
     }
 
-    function showResults(jobId, saveMasks, files) {
+    function showResults(jobId, saveMasks, files, removeOverlaps) {
       resultsSection.style.display = 'block';
       csvLink.href = `/api/jobs/${jobId}/results`;
       csvLink.download = `results_${jobId}.csv`;
@@ -307,14 +317,20 @@
       if (saveMasks && files) {
         files.forEach(f => {
           const stem = f.replace(/\.[^.]+$/, '');
-          const maskFile = `${stem}_mask.tiff`;
-          const li = document.createElement('li');
-          const a = document.createElement('a');
-          a.href = `/api/jobs/${jobId}/masks/${maskFile}`;
-          a.download = maskFile;
-          a.textContent = `⬇ ${maskFile}`;
-          li.appendChild(a);
-          masksList.appendChild(li);
+          const artifacts = [`${stem}_mask.tiff`];
+          if (removeOverlaps) {
+            artifacts.push(`${stem}_mask_original.tiff`);
+            artifacts.push(`${stem}_overlap_analysis.csv`);
+          }
+          artifacts.forEach(name => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.href = `/api/jobs/${jobId}/masks/${name}`;
+            a.download = name;
+            a.textContent = `⬇ ${name}`;
+            li.appendChild(a);
+            masksList.appendChild(li);
+          });
         });
       }
 
@@ -351,9 +367,13 @@
 
       const fd = new FormData(form);
 
-      // Coerce save_masks to boolean string expected by FastAPI Form(bool)
+      // Coerce save_masks / remove_overlaps to boolean strings expected by
+      // FastAPI Form(bool).
       if (!form.save_masks.checked) {
         fd.set('save_masks', 'false');
+      }
+      if (!form.remove_overlaps.checked) {
+        fd.set('remove_overlaps', 'false');
       }
 
       // Strip empty optional fields so FastAPI treats them as None

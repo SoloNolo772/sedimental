@@ -85,6 +85,9 @@ def run_docker_process(args) -> int:
     if getattr(args, "save_masks", False):
         cmd.append("--save-masks")
 
+    if getattr(args, "remove_overlaps", False):
+        cmd.append("--remove-overlaps")
+
     if getattr(args, "scale", None) is not None:
         cmd += ["--scale", str(args.scale)]
 
@@ -159,6 +162,7 @@ def run_process_internal(args) -> int:
     output_path = Path(args.output)
     metadata_path = Path(args.metadata) if getattr(args, "metadata", None) else None
     save_masks = getattr(args, "save_masks", False)
+    remove_overlaps = getattr(args, "remove_overlaps", False)
 
     orchestrator = ProcessingOrchestrator()
 
@@ -168,6 +172,7 @@ def run_process_internal(args) -> int:
             output_path=output_path,
             metadata_path=metadata_path,
             save_masks=save_masks,
+            remove_overlaps=remove_overlaps,
         )
     except Exception as exc:
         print(f"Error: processing failed: {exc}", file=sys.stderr)
@@ -233,6 +238,16 @@ def main():
         '--save-masks',
         action='store_true',
         help='Save intermediate segmentation masks'
+    )
+    process_parser.add_argument(
+        '--remove-overlaps',
+        action='store_true',
+        help=(
+            'Detect and exclude partially-covered (overlapping) grains '
+            'from the results using shape-based heuristics. When combined '
+            'with --save-masks, also writes an *_overlap_analysis.csv '
+            'and preserves the unfiltered mask as *_mask_original.tiff.'
+        ),
     )
     process_parser.add_argument(
         '--scale',

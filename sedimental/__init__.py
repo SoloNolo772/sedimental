@@ -19,7 +19,7 @@ from .errors import (
     MetadataParseError,
     OutputError,
 )
-from .csv_writer import CSVWriter
+from .csv_writer import CSVWriter, write_overlap_analysis_csv
 from .logging import configure_logging
 from .metadata import MetadataParser
 from .orchestrator import ProcessingOrchestrator
@@ -37,4 +37,5 @@ __all__ = [
     "MetadataParseError",
     "OutputError",
     "configure_logging",
+    "write_overlap_analysis_csv",
 ]

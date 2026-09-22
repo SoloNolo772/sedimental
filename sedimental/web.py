@@ -68,6 +68,7 @@ def init_db() -> None:
                 input_files TEXT NOT NULL,
                 metadata TEXT,
                 save_masks INTEGER DEFAULT 0,
+                remove_overlaps INTEGER DEFAULT 0,
                 result_path TEXT,
                 error_message TEXT,
                 progress_current INTEGER DEFAULT 0,
@@ -76,6 +77,13 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at)")
+        # Backfill remove_overlaps column for existing databases created
+        # before this option was added.
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)").fetchall()}
+        if "remove_overlaps" not in cols:
+            conn.execute(
+                "ALTER TABLE jobs ADD COLUMN remove_overlaps INTEGER DEFAULT 0"
+            )
         conn.commit()
 
 
@@ -99,7 +107,13 @@ def _get_job(job_id: str) -> Optional[sqlite3.Row]:
 # Background processing
 # ---------------------------------------------------------------------------
 
-def _run_job(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Optional[dict]) -> None:
+def _run_job(
+    job_id: str,
+    job_dir: Path,
+    save_masks: bool,
+    metadata_dict: Optional[dict],
+    remove_overlaps: bool = False,
+) -> None:
     """Execute a processing job synchronously (runs in a thread)."""
     from .metadata import MetadataParser
     from .models import SampleMetadata
@@ -134,6 +148,7 @@ def _run_job(job_id: str, job_dir: Path, save_masks: bool, metadata_dict: Option
             output_path=result_csv,
             metadata_path=meta_path,
             save_masks=save_masks,
+            remove_overlaps=remove_overlaps,
             progress_callback=_on_progress,
         )
 
@@ -335,6 +350,7 @@ def create_app() -> "FastAPI":
         scale_ppm: Optional[float] = Form(None),
         submitted_by: Optional[str] = Form(None),
         save_masks: bool = Form(False),
+        remove_overlaps: bool = Form(False),
     ):
         """
         Create a new processing job.
@@ -407,16 +423,30 @@ def create_app() -> "FastAPI":
         # Insert job record
         with _get_db() as conn:
             conn.execute(
-                """INSERT INTO jobs (id, status, input_files, metadata, save_masks)
-                   VALUES (?, 'pending', ?, ?, ?)""",
-                (job_id, json.dumps(filenames), json.dumps(metadata_dict), int(save_masks)),
+                """INSERT INTO jobs
+                   (id, status, input_files, metadata, save_masks, remove_overlaps)
+                   VALUES (?, 'pending', ?, ?, ?, ?)""",
+                (
+                    job_id,
+                    json.dumps(filenames),
+                    json.dumps(metadata_dict),
+                    int(save_masks),
+                    int(remove_overlaps),
+                ),
             )
             conn.commit()
 
         # Kick off background processing
-        background_tasks.add_task(_run_job, job_id, job_dir, save_masks, metadata_dict)
+        background_tasks.add_task(
+            _run_job, job_id, job_dir, save_masks, metadata_dict, remove_overlaps
+        )
 
-        return {"job_id": job_id, "status": "pending", "files": filenames}
+        return {
+            "job_id": job_id,
+            "status": "pending",
+            "files": filenames,
+            "remove_overlaps": remove_overlaps,
+        }
 
     @app.get("/api/jobs/{job_id}")
     async def get_job_status(job_id: str):
@@ -424,6 +454,13 @@ def create_app() -> "FastAPI":
         row = _get_job(job_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+
+        # remove_overlaps was added later — tolerate rows written before
+        # the schema migration ran.
+        try:
+            remove_overlaps_val = bool(row["remove_overlaps"])
+        except (IndexError, KeyError):
+            remove_overlaps_val = False
 
         return {
             "job_id": row["id"],
@@ -436,6 +473,7 @@ def create_app() -> "FastAPI":
             },
             "files": json.loads(row["input_files"]),
             "save_masks": bool(row["save_masks"]),
+            "remove_overlaps": remove_overlaps_val,
             "error_message": row["error_message"],
         }
 
@@ -462,7 +500,12 @@ def create_app() -> "FastAPI":
 
     @app.get("/api/jobs/{job_id}/masks/{filename}")
     async def download_mask(job_id: str, filename: str):
-        """Download a segmentation mask TIFF for a completed job."""
+        """Download a segmentation mask TIFF for a completed job.
+
+        Also serves the ``*_overlap_analysis.csv`` file produced when
+        ``remove_overlaps`` is enabled, using an appropriate content type
+        for the file's extension.
+        """
         row = _get_job(job_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -477,9 +520,10 @@ def create_app() -> "FastAPI":
         if not mask_path.exists():
             raise HTTPException(status_code=404, detail=f"Mask '{filename}' not found")
 
+        media_type = "text/csv" if filename.lower().endswith(".csv") else "image/tiff"
         return FileResponse(
             path=str(mask_path),
-            media_type="image/tiff",
+            media_type=media_type,
             filename=filename,
         )
 
